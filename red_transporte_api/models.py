@@ -126,6 +126,58 @@ class RouteSuggestion(BaseModel):
     alight_at: NearbyStop
 
 
+# ── Routing models ───────────────────────────────────────────
+
+class RoutingLeg(BaseModel):
+    mode: str
+    route_id: str = ""
+    route_name: str = ""
+    route_color: str = ""
+    direction: int = 0
+    board_stop_id: str = ""
+    board_stop_name: str = ""
+    alight_stop_id: str = ""
+    alight_stop_name: str = ""
+    num_stops: int = 0
+    duration_secs: int = 0
+    duration_human: str = ""
+    wait_secs: int = 0
+    walk_distance_m: int = 0
+
+
+class FareDetail(BaseModel):
+    total: int = 0
+    periodo: str = ""
+    fare_type: str = "normal"
+    breakdown: list[dict] = []
+
+
+class RoutingPlan(BaseModel):
+    found: bool = False
+    total_time_secs: int = 0
+    total_time_human: str = ""
+    departure_time: str = ""
+    arrival_time: str = ""
+    walk_time_secs: int = 0
+    ride_time_secs: int = 0
+    wait_time_secs: int = 0
+    transfers: int = 0
+    total_walk_m: int = 0
+    legs: list[RoutingLeg] = []
+    fare: FareDetail = FareDetail()
+    origin_stop_id: str = ""
+    origin_stop_name: str = ""
+    dest_stop_id: str = ""
+    dest_stop_name: str = ""
+    summary: str = ""
+
+
+class RoutingResponse(BaseModel):
+    plans: list[RoutingPlan] = []
+    count: int = 0
+    message: str = ""
+
+
 # ── System models ────────────────────────────────────────────
 
 class SystemStats(BaseModel):

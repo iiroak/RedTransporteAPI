@@ -1,11 +1,13 @@
-"""Geospatial auxiliary routes — nearby stops, stations, bounding box, route suggestions."""
+"""Geospatial auxiliary routes — nearby stops, stations, bounding box, route suggestions, routing."""
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from red_transporte_api.api.deps import get_gtfs
+from red_transporte_api.api.deps import get_gtfs, get_router
 from red_transporte_api.gtfs import spatial as geo
 from red_transporte_api.gtfs.parser import haversine
+from red_transporte_api.gtfs.router import secs_to_human
+from red_transporte_api.models import RoutingResponse, RoutingPlan, RoutingLeg, FareDetail
 
 router = APIRouter()
 
@@ -125,3 +127,102 @@ async def suggest_routes(
             "message": "No se encontraron recorridos directos entre los puntos. Intente aumentar el radio.",
         }
     return {"suggestions": suggestions, "count": len(suggestions)}
+
+
+@router.get("/routing/plan", response_model=RoutingResponse)
+async def plan_route(
+    from_lat: float = Query(..., description="Latitud origen"),
+    from_lon: float = Query(..., description="Longitud origen"),
+    to_lat: float = Query(..., description="Latitud destino"),
+    to_lon: float = Query(..., description="Longitud destino"),
+    departure_time: str = Query("08:00:00", description="Hora de salida HH:MM:SS"),
+    day: str = Query("L", description="Día: L=laboral, S=sábado, D=domingo"),
+    max_results: int = Query(3, ge=1, le=5, description="Máximo de alternativas"),
+    max_transfers: int = Query(2, ge=0, le=3, description="Máximo de transbordos"),
+    fare_type: str = Query("normal", description="Tipo tarifa: normal, estudiante, adulto_mayor"),
+):
+    """
+    Planificar ruta de transporte público entre dos coordenadas (RAPTOR).
+
+    Usa el algoritmo RAPTOR (Round-Based Public Transit Optimized Router):
+    - Calcula rutas Pareto-óptimas (tiempo vs transbordos)
+    - Tiempos de espera basados en frecuencias reales GTFS
+    - Caminata entre paradas cercanas para transbordos
+    - Cálculo de tarifa integrada RED (punta/valle/baja)
+    - Máximo 2 transbordos en ventana de 120 min (regla RED)
+    """
+    transit_router = get_router()
+    results = transit_router.route(
+        from_lat, from_lon, to_lat, to_lon,
+        departure_time=departure_time,
+        service_day=day,
+        max_results=max_results,
+        max_transfers=max_transfers,
+        fare_type=fare_type,
+    )
+
+    plans = []
+    for r in results:
+        if not r.found:
+            continue
+        legs = []
+        for leg in r.legs:
+            legs.append(RoutingLeg(
+                mode=leg.mode,
+                route_id=leg.route_id,
+                route_name=leg.route_name,
+                route_color=leg.route_color,
+                direction=leg.direction,
+                board_stop_id=leg.board_stop_id,
+                board_stop_name=leg.board_stop_name,
+                alight_stop_id=leg.alight_stop_id,
+                alight_stop_name=leg.alight_stop_name,
+                num_stops=leg.num_stops,
+                duration_secs=leg.duration_secs,
+                duration_human=secs_to_human(leg.duration_secs),
+                wait_secs=leg.wait_secs,
+                walk_distance_m=leg.walk_distance_m,
+            ))
+        transit_legs = [l for l in legs if l.route_name]
+        summary_parts = []
+        for tl in transit_legs:
+            summary_parts.append(f"{tl.route_name} ({tl.board_stop_name} → {tl.alight_stop_name})")
+        summary = " ➜ ".join(summary_parts) if summary_parts else "Caminar"
+        if r.transfers > 0:
+            summary += f" ({r.transfers} trasbordo{'s' if r.transfers > 1 else ''})"
+
+        plans.append(RoutingPlan(
+            found=True,
+            total_time_secs=r.total_time_secs,
+            total_time_human=r.total_time_human,
+            departure_time=r.departure_time,
+            arrival_time=r.arrival_time,
+            walk_time_secs=r.walk_time_secs,
+            ride_time_secs=r.ride_time_secs,
+            wait_time_secs=r.wait_time_secs,
+            transfers=r.transfers,
+            total_walk_m=r.total_walk_m,
+            legs=legs,
+            fare=FareDetail(
+                total=r.fare.total,
+                periodo=r.fare.periodo,
+                fare_type=r.fare.fare_type,
+                breakdown=r.fare.breakdown,
+            ),
+            origin_stop_id=r.origin_stop_id,
+            origin_stop_name=r.origin_stop_name,
+            dest_stop_id=r.dest_stop_id,
+            dest_stop_name=r.dest_stop_name,
+            summary=summary,
+        ))
+
+    if not plans:
+        return RoutingResponse(
+            plans=[], count=0,
+            message="No se encontró ruta. Intente ampliar el radio o verificar coordenadas.",
+        )
+
+    return RoutingResponse(
+        plans=plans, count=len(plans),
+        message=f"{len(plans)} alternativa(s) encontrada(s)",
+    )

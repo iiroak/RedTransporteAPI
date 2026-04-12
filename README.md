@@ -15,6 +15,8 @@ API unificada para el transporte público de Santiago de Chile. Combina tres fue
 - **Agent tools** compatibles con OpenAI, Claude, LangChain
 - **GTFS auto-download** desde DTPM con detección de versión
 - **Rutas geoespaciales**: paraderos cercanos, estación de metro más cercana, bounding box, sugerencia de recorridos entre dos puntos
+- **Planificador de rutas RAPTOR**: calcula rutas óptimas entre dos coordenadas con transbordos, tiempos de espera reales y tarifa integrada RED
+- **Tarifa integrada RED**: cálculo automático de pasaje (punta/valle/baja, estudiante, adulto mayor, transbordos)
 - **Cache inteligente** para iBus (TTL 30s) para evitar sobrecarga
 - **Instalador Linux** con script `install.sh`
 - **Sin base de datos** — GTFS cargado en memoria desde CSVs
@@ -187,6 +189,7 @@ result = tools.call_tool("get_stop_info", {"stop_code": "PA433"})
 | GET | `/nearby/routes?lat=...&lon=...&radius=0.3` | Recorridos cerca de un punto |
 | GET | `/bbox/stops?min_lat=...&min_lon=...&max_lat=...&max_lon=...` | Paraderos en bounding box |
 | GET | `/routing/suggest?from_lat=...&from_lon=...&to_lat=...&to_lon=...` | Sugerir recorridos entre dos puntos |
+| GET | `/routing/plan?from_lat=...&from_lon=...&to_lat=...&to_lon=...` | **Planificar ruta óptima (RAPTOR)** |
 
 ### GTFS
 
@@ -194,6 +197,121 @@ result = tools.call_tool("get_stop_info", {"stop_code": "PA433"})
 |--------|------|-------------|
 | GET | `/gtfs/status` | Estado de los datos GTFS |
 | POST | `/gtfs/update?force=false` | Descargar/actualizar GTFS |
+
+## Planificador de rutas (RAPTOR)
+
+El endpoint `/routing/plan` implementa el algoritmo **RAPTOR** (Round-Based Public Transit Optimized Router), basado en el paper de Microsoft Research ([Delling et al., ALENEX 2015](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)), adaptado para datos GTFS basados en frecuencia del sistema RED de Santiago.
+
+### ¿Qué es RAPTOR?
+
+RAPTOR es un algoritmo de enrutamiento de transporte público que encuentra rutas **Pareto-óptimas** considerando dos criterios simultáneamente:
+- **Tiempo de llegada** (más rápido)
+- **Número de transbordos** (menos cambios)
+
+Funciona por *rondas*: la ronda 1 busca la mejor ruta directa (0 transbordos), la ronda 2 busca la mejor con 1 transbordo, y la ronda 3 con 2 transbordos. Solo devuelve resultados donde más transbordos producen un viaje más rápido.
+
+### Uso del endpoint
+
+```
+GET /routing/plan?from_lat=-33.4372&from_lon=-70.634&to_lat=-33.586&to_lon=-70.576
+    &departure_time=09:00:00&day=L&max_results=3&max_transfers=2&fare_type=normal
+```
+
+**Parámetros:**
+
+| Parámetro | Default | Descripción |
+|-----------|---------|-------------|
+| `from_lat`, `from_lon` | (requerido) | Coordenadas del origen |
+| `to_lat`, `to_lon` | (requerido) | Coordenadas del destino |
+| `departure_time` | `08:00:00` | Hora de salida (HH:MM:SS) |
+| `day` | `L` | Día: `L`=laboral, `S`=sábado, `D`=domingo |
+| `max_results` | `3` | Máximo de alternativas (1-5) |
+| `max_transfers` | `2` | Máximo de transbordos (0-3) |
+| `fare_type` | `normal` | Tipo de tarifa: `normal`, `estudiante`, `adulto_mayor` |
+
+**Respuesta:** Lista de planes de viaje, cada uno con:
+- Legs (tramos): caminar, subir bus/metro, caminar transbordo, etc.
+- Tiempos desglosados: caminata, espera, viaje
+- Tarifa calculada con desglose por tramo
+- Resumen legible ("L1 (Baquedano → La Moneda) ➜ 506 (Plaza Italia → Mall)")
+
+### Ejemplo de respuesta
+
+```json
+{
+  "plans": [
+    {
+      "found": true,
+      "total_time_secs": 4113,
+      "total_time_human": "1h 9min",
+      "departure_time": "09:00:00",
+      "arrival_time": "10:08:33",
+      "walk_time_secs": 583,
+      "ride_time_secs": 2530,
+      "wait_time_secs": 1000,
+      "transfers": 2,
+      "total_walk_m": 760,
+      "fare": {
+        "total": 815,
+        "periodo": "valle",
+        "fare_type": "normal",
+        "breakdown": [
+          {"mode": "metro", "route": "L1", "fare_mode": 815, "paid": 815},
+          {"mode": "metro", "route": "L5", "fare_mode": 815, "paid": 0},
+          {"mode": "metro", "route": "L4", "fare_mode": 815, "paid": 0}
+        ]
+      },
+      "legs": [
+        {"mode": "walk", "walk_distance_m": 177, "duration_secs": 142},
+        {"mode": "metro", "route_name": "L1", "board_stop_name": "Estación Central", "alight_stop_name": "Baquedano", "num_stops": 8, "duration_secs": 660, "wait_secs": 340},
+        {"mode": "walk", "walk_distance_m": 84, "duration_secs": 67},
+        {"mode": "metro", "route_name": "L5", "board_stop_name": "Baquedano", "alight_stop_name": "Vicente Valdés", "num_stops": 12, "duration_secs": 1140, "wait_secs": 330},
+        {"mode": "metro", "route_name": "L4", "board_stop_name": "Vicente Valdés", "alight_stop_name": "Protectora de La Infancia", "num_stops": 7, "duration_secs": 730, "wait_secs": 330},
+        {"mode": "walk", "walk_distance_m": 499, "duration_secs": 399}
+      ],
+      "summary": "L1 (Estación Central → Baquedano) ➜ L5 (Baquedano → Vicente Valdés) ➜ L4 (Vicente Valdés → Protectora de La Infancia) (2 trasbordos)"
+    }
+  ],
+  "count": 1,
+  "message": "1 alternativa(s) encontrada(s)"
+}
+```
+
+### Tarifa integrada RED
+
+El cálculo de tarifa sigue las [reglas oficiales de RED](https://www.red.cl/tarifas-y-recargas/conoce-las-tarifas/):
+
+**Tarifas base (adulto normal):**
+
+| Modo | Punta (07-09 / 18-20) | Valle (09-18 / 20-20:44 / fines de semana) | Baja (06-07 / 20:45-23) |
+|------|----------------------|-------------------------------------------|------------------------|
+| Bus | $795 | $795 | $795 |
+| Metro / Tren | $895 | $815 | $735 |
+
+**Reglas de transbordo:**
+- Máximo **2 transbordos** (3 etapas) en ventana de **120 minutos**
+- **Tarifa integrada**: se paga el **máximo** entre bus y metro para todo el viaje
+- Bus → Metro: pagas $795 (bus) + diferencia hasta metro = $895 en punta
+- Metro → Bus: pagas $895 (metro) + $0 (bus incluido)
+- Bus → Bus: pagas $795 una sola vez
+- Primer tramo: pago completo. Siguientes tramos: $0 adicional (incluido en tarifa integrada)
+
+**Tarifas especiales:**
+
+| Tipo | Tarifa |
+|------|--------|
+| Estudiante | $260 (tarifa plana) |
+| Adulto Mayor | $390 (tarifa plana) |
+
+### Detalles técnicos del algoritmo
+
+- **Velocidad de caminata**: 4.5 km/h
+- **Radio de búsqueda**: 500m para paraderos origen/destino y transferencias a pie
+- **Tiempo de espera**: headway/2 (promedio) + 30s penalización de abordaje
+- **Índice espacial**: grilla 0.005° (~500m) para búsqueda rápida de vecinos
+- **Perfiles de viaje**: tiempos acumulados de stop_times del GTFS
+- **Bandas de frecuencia**: headway real por hora/día del GTFS
+- **Query time**: ~130ms por consulta
 
 ## Arquitectura
 
@@ -204,6 +322,7 @@ red_transporte_api/
 ├── gtfs/
 │   ├── downloader.py   # Auto-descarga GTFS desde DTPM
 │   ├── parser.py       # Parser GTFS (dataclasses, índices, queries)
+│   ├── router.py       # Planificador RAPTOR (rutas, transbordos, tarifas)
 │   └── spatial.py      # Utilidades geoespaciales (Haversine, bbox, nearest)
 ├── clients/
 │   ├── ibus.py         # Scraper iBus con cache TTL
