@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "red-transporte-api"
+version = "1.0.0"
+description = "API unificada para el transporte público de Santiago de Chile — GTFS, iBus y RED"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "RED Transporte Contributors"},
+]
+keywords = ["transantiago", "red", "gtfs", "ibus", "transporte", "santiago", "chile", "api"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+agent = [
+    "rich>=13.0",
+]
+all = [
+    "red-transporte-api[api,agent]",
+]
+dev = [
+    "red-transporte-api[all]",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+
+[project.scripts]
+red-transporte = "red_transporte_api.cli.main:main"
+red-transporte-server = "red_transporte_api.api.app:run_server"
+
+[project.urls]
+Homepage = "https://github.com/iiroak/RedTransporteAPI"
+
+[tool.setuptools.packages.find]
+include = ["red_transporte_api*"]
