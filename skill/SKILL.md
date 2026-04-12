@@ -1,3 +1,15 @@
+  ---                                                                                                                                                                          
+  name: redtransportecl                                                                                                                                                          
+  description: Usa la CLI `red-transporte` para consultar paraderos, recorridos, predicciones en tiempo real, GTFS local y utilidades geoespaciales de RED Chile.                
+  metadata:                                                                                                                                                                      
+    {                                                                                                                                                                            
+      "openclaw":                                                                                                                                                                
+        {                                                                                                                                                                        
+          "requires": { "bins": ["red-transporte"] }                                                                                                                             
+        }                                                                                                                                                                        
+    }                                                                                                                                                                            
+  ---  
+
 # RedTransporteAPI CLI — SKILL
 
 Esta skill esta enfocada exclusivamente en el uso de la CLI `red-transporte`.
