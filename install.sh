@@ -35,28 +35,26 @@ if [ -z "$PYTHON_CMD" ]; then
     exit 1
 fi
 
-# --- Verificar pip ---
-PIP_CMD=""
-for cmd in pip3 pip; do
-    if command -v "$cmd" &>/dev/null; then
-        PIP_CMD="$cmd"
-        echo -e "${GREEN}✓${NC} pip encontrado: $("$cmd" --version 2>&1 | head -1)"
-        break
-    fi
-done
+# --- Preparar entorno virtual (evita PEP 668) ---
+VENV_DIR="$HOME/.red-transporte/venv"
+LOCAL_BIN="$HOME/.local/bin"
 
-if [ -z "$PIP_CMD" ]; then
-    echo -e "${YELLOW}!${NC} pip no encontrado, intentando instalar..."
-    "$PYTHON_CMD" -m ensurepip --upgrade 2>/dev/null || {
-        echo -e "${RED}✗${NC} No se pudo instalar pip."
-        echo "  Instalar manualmente:"
-        echo "    Ubuntu/Debian:  sudo apt install python3-pip"
-        echo "    macOS:          brew install python3"
+echo -e "${YELLOW}!${NC} Configurando entorno virtual en $VENV_DIR..."
+mkdir -p "$(dirname "$VENV_DIR")"
+
+if [ ! -d "$VENV_DIR" ]; then
+    "$PYTHON_CMD" -m venv "$VENV_DIR" 2>/dev/null || {
+        echo -e "${RED}✗${NC} No se pudo crear el entorno virtual."
+        echo "  En Debian/Ubuntu instala: sudo apt install python3-venv"
         exit 1
     }
-    PIP_CMD="$PYTHON_CMD -m pip"
-    echo -e "${GREEN}✓${NC} pip instalado"
 fi
+
+PIP_CMD="$VENV_DIR/bin/pip"
+VENV_PYTHON="$VENV_DIR/bin/python"
+
+"$PIP_CMD" install --upgrade pip >/dev/null 2>&1 || true
+echo -e "${GREEN}✓${NC} Entorno virtual listo: $VENV_DIR"
 
 # --- Localizar o clonar el repositorio ---
 REPO_URL="https://github.com/iiroak/RedTransporteAPI"
@@ -121,22 +119,34 @@ INSTALL_MODE="${INSTALL_MODE:-3}"
 case "$INSTALL_MODE" in
     1)
         echo "Instalando CLI..."
-        $PIP_CMD install .
+        "$PIP_CMD" install .
         ;;
     2)
         echo "Instalando CLI + API..."
-        $PIP_CMD install ".[api]"
+        "$PIP_CMD" install ".[api]"
         ;;
     *)
         echo "Instalando todo..."
-        $PIP_CMD install ".[all]"
+        "$PIP_CMD" install ".[all]"
         ;;
 esac
 
 echo ""
 
+# --- Exponer comandos en ~/.local/bin ---
+mkdir -p "$LOCAL_BIN"
+
+if [ -x "$VENV_DIR/bin/red-transporte" ]; then
+    ln -sf "$VENV_DIR/bin/red-transporte" "$LOCAL_BIN/red-transporte"
+fi
+
+if [ -x "$VENV_DIR/bin/red-transporte-server" ]; then
+    ln -sf "$VENV_DIR/bin/red-transporte-server" "$LOCAL_BIN/red-transporte-server"
+fi
+
+echo -e "${GREEN}✓${NC} Comandos enlazados en $LOCAL_BIN"
+
 # --- Verificar PATH ---
-LOCAL_BIN="$HOME/.local/bin"
 CMD_FOUND=false
 
 if command -v red-transporte &>/dev/null; then
@@ -181,7 +191,7 @@ read -rp "¿Descargar datos GTFS ahora? (~50MB desde DTPM) [S/n]: " DL_GTFS
 DL_GTFS="${DL_GTFS:-S}"
 if [[ "$DL_GTFS" =~ ^[Ss]$ ]]; then
     echo "Descargando GTFS..."
-    red-transporte gtfs update 2>/dev/null || "$PYTHON_CMD" -m red_transporte_api gtfs update
+    "$VENV_DIR/bin/red-transporte" gtfs update 2>/dev/null || "$VENV_PYTHON" -m red_transporte_api gtfs update
 fi
 
 # --- Resultado ---
