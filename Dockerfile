@@ -20,9 +20,11 @@ RUN groupadd --system app && useradd --system --gid app --home /app app
 USER app
 
 # /data is provided as a Docker named volume at runtime.
-# Create the uv cache dir there so the app user can write.
+# Create the uv cache dir so app can write, and set HOME=/data
+# so uv falls back to /data/.cache/uv (matches UV_CACHE_DIR).
 RUN mkdir -p /data/.cache/uv && chown app:app /data/.cache/uv
 ENV UV_CACHE_DIR=/data/.cache/uv
+ENV HOME=/data
 ENV RED_TRANSPORTE_DATA_DIR=/data
 
 EXPOSE 8000
