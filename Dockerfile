@@ -12,20 +12,20 @@ COPY pyproject.toml README.md ./
 # Copy source
 COPY red_transporte_api/ ./red_transporte_api/
 
-# Install dependencies.  No UV_CACHE_DIR needed — image is self-contained after this.
-# The /app/.cache/uv default is fine since this layer runs as root.
+# Install dependencies as root.  uv creates ~/.cache/uv inside the image
+# which is fine since this layer only runs at build time.
 RUN uv sync --extra api --no-dev --no-editable
 
 # Non-root user for running the server
 RUN groupadd --system app && useradd --system --gid app --home /app app
 USER app
 
-# Data directory — mount a volume here to persist GTFS and SQLite DB.
-# Created owned by app so the running process can write.
-RUN mkdir -p /data && chown app:app /data
+# /data is provided by a named volume at runtime.  The app user can write to it.
 ENV RED_TRANSPORTE_DATA_DIR=/data
 
 EXPOSE 8000
 
 # GTFS is downloaded on first request if not present.
+# To prewarm: docker run --rm -v red_transporte_data:/data ghcr.io/iiroak/redtransporteapi:latest \
+#   uv run red-transporte gtfs update
 CMD ["uv", "run", "red-transporte-server"]
