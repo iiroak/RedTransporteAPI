@@ -12,20 +12,15 @@ COPY pyproject.toml README.md ./
 # Copy source
 COPY red_transporte_api/ ./red_transporte_api/
 
-# Install dependencies.  uv creates ~/.cache/uv inside /app as root,
-# which is fine since this layer only runs at build time.
-# All needed packages are installed in /app/.venv and bundled in the image.
+# Install dependencies as root.  Packages are bundled in /app/.venv.
+# No UV_CACHE_DIR needed at runtime — all deps are already in the venv.
 RUN uv sync --extra api --no-dev --no-editable
 
 # Non-root user for running the server
 RUN groupadd --system app && useradd --system --gid app --home /app app
 USER app
 
-# /data is provided as a Docker volume at runtime.
-# The app user can write to it for the SQLite DB and GTFS cache.
-# Tell uv to use /data for its runtime cache so app can write there.
-# (packages are already in /app/.venv, so no re-download needed)
-ENV UV_CACHE_DIR=/data/.cache/uv
+# /data is provided as a Docker named volume at runtime.
 ENV RED_TRANSPORTE_DATA_DIR=/data
 
 EXPOSE 8000
