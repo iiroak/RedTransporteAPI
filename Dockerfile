@@ -9,8 +9,14 @@ RUN groupadd --system app && useradd --system --gid app --home /app app
 
 WORKDIR /app
 
+# Copy dependency manifest first (layer-cache friendly)
+COPY pyproject.toml README.md ./
+
 # Install only the api extra (MySQL optional — add --extra mysql to uv sync if needed)
 RUN uv sync --extra api --no-dev --no-editable
+
+# Copy source
+COPY red_transporte_api/ ./red_transporte_api/
 
 # Data directory — mount a volume here to persist GTFS cache and SQLite DB
 RUN install -d -o app -g app /data
