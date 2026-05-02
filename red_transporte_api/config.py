@@ -49,6 +49,13 @@ IBUS_HEADERS = {
 API_HOST = os.getenv("RED_TRANSPORTE_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("RED_TRANSPORTE_PORT", "8000"))
 
+# GTFS runtime lifecycle
+# Option 1 (min RAM): lazy load + idle unload by default.
+GTFS_EAGER_LOAD = os.getenv("RED_TRANSPORTE_GTFS_EAGER_LOAD", "false").lower() in ("true", "1", "yes")
+GTFS_IDLE_UNLOAD_SECONDS = int(os.getenv("RED_TRANSPORTE_GTFS_IDLE_UNLOAD_SECONDS", "900"))
+GTFS_ROUTER_LAZY_BUILD = os.getenv("RED_TRANSPORTE_GTFS_ROUTER_LAZY_BUILD", "true").lower() in ("true", "1", "yes")
+GTFS_SWEEP_INTERVAL_SECONDS = int(os.getenv("RED_TRANSPORTE_GTFS_SWEEP_INTERVAL_SECONDS", "60"))
+
 DB_BACKEND = os.getenv("RED_TRANSPORTE_DB_BACKEND", "sqlite")
 DB_URL = os.getenv("RED_TRANSPORTE_DB_URL", str(DATA_DIR / "red_transporte.db"))
 

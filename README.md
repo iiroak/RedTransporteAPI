@@ -387,6 +387,10 @@ red_transporte_api/
 | `RED_TRANSPORTE_PUBLIC_IP_RPM` | `20` | Límite de requests por minuto para IPs públicas |
 | `RED_TRANSPORTE_TRUST_PROXY` | `false` | Confiar `X-Forwarded-For` (solo detrás de proxy conocido) |
 | `RED_TRANSPORTE_CORS_ORIGINS` | `*` | Orígenes CORS permitidos (comma-separated, `*` para todos) |
+| `RED_TRANSPORTE_GTFS_EAGER_LOAD` | `false` | Cargar GTFS al iniciar (`false` = lazy load para ahorrar RAM) |
+| `RED_TRANSPORTE_GTFS_IDLE_UNLOAD_SECONDS` | `900` | Descargar GTFS/router de RAM tras inactividad (0 deshabilita) |
+| `RED_TRANSPORTE_GTFS_ROUTER_LAZY_BUILD` | `true` | Construir `TransitRouter` solo al usar `/routing/plan` |
+| `RED_TRANSPORTE_GTFS_SWEEP_INTERVAL_SECONDS` | `60` | Intervalo del sweeper de inactividad en segundos |
 | `RED_API_BASE_URL` | `https://appred.tstgo.cl` | URL base API RED |
 | `RED_IBUS_URL` | `http://m.ibus.cl/Servlet` | URL de iBus |
 | `RED_IBUS_TIMEOUT` | `15` | Timeout iBus (segundos) |

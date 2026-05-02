@@ -4,25 +4,20 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from red_transporte_api.config import API_HOST, API_PORT, CORS_ORIGINS, DB_BACKEND, DB_URL, MASTER_TOKEN, PUBLIC_API_ENABLED, PUBLIC_IP_LIMIT_PER_MINUTE, VERSION
+from red_transporte_api.config import (
+    API_HOST,
+    API_PORT,
+    CORS_ORIGINS,
+    DB_BACKEND,
+    DB_URL,
+    GTFS_EAGER_LOAD,
+    MASTER_TOKEN,
+    PUBLIC_API_ENABLED,
+    PUBLIC_IP_LIMIT_PER_MINUTE,
+    VERSION,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _try_load_gtfs():
-    """Load GTFS data on startup, downloading it when needed."""
-    from red_transporte_api.gtfs.downloader import ensure_gtfs_path
-    from red_transporte_api.gtfs.parser import GTFSData
-    from red_transporte_api.api.deps import set_gtfs
-
-    gtfs_path = ensure_gtfs_path()
-    logger.info("Loading GTFS from %s", gtfs_path)
-    gtfs = GTFSData.from_directory(gtfs_path)
-    set_gtfs(gtfs)
-    logger.info(
-        "GTFS loaded: %d stops, %d routes",
-        len(gtfs.stops), len(gtfs.routes),
-    )
 
 
 def _init_auth():
@@ -52,9 +47,14 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app):
+        from red_transporte_api.api.deps import runtime_manager
+
         _init_auth()
-        _try_load_gtfs()
+        runtime_manager.start()
+        if GTFS_EAGER_LOAD:
+            runtime_manager.preload()
         yield
+        runtime_manager.stop()
 
     app = FastAPI(
         title="RedTransporteAPI",

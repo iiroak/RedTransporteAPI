@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends
 from red_transporte_api.auth.deps import require_access
 from red_transporte_api.config import VERSION
 from red_transporte_api.models import APIInfo, HealthCheck, SystemStats
-from red_transporte_api.api.deps import get_gtfs
+from red_transporte_api.api.deps import get_gtfs, get_gtfs_runtime_status
 
 router = APIRouter()
 
 
 @router.get("/health", response_model=HealthCheck, tags=["Sistema"])
 async def health():
-    from red_transporte_api.api.deps import _gtfs
-    return HealthCheck(version=VERSION, gtfs_loaded=_gtfs is not None)
+    status = get_gtfs_runtime_status()
+    return HealthCheck(version=VERSION, gtfs_loaded=status["gtfs_loaded"])
 
 
 @router.get("/", response_model=APIInfo, tags=["Sistema"])
