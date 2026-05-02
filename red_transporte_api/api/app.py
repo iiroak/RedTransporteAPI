@@ -4,31 +4,46 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from red_transporte_api.config import API_HOST, API_PORT, VERSION
+from red_transporte_api.config import API_HOST, API_PORT, CORS_ORIGINS, DB_BACKEND, DB_URL, MASTER_TOKEN, PUBLIC_API_ENABLED, PUBLIC_IP_LIMIT_PER_MINUTE, VERSION
 
 logger = logging.getLogger(__name__)
 
 
 def _try_load_gtfs():
-    """Try to load GTFS data on startup."""
-    from red_transporte_api.gtfs.downloader import get_gtfs_path
+    """Load GTFS data on startup, downloading it when needed."""
+    from red_transporte_api.gtfs.downloader import ensure_gtfs_path
     from red_transporte_api.gtfs.parser import GTFSData
     from red_transporte_api.api.deps import set_gtfs
 
-    gtfs_path = get_gtfs_path()
-    if gtfs_path:
-        logger.info("Loading GTFS from %s", gtfs_path)
-        gtfs = GTFSData.from_directory(gtfs_path)
-        set_gtfs(gtfs)
-        logger.info(
-            "GTFS loaded: %d stops, %d routes",
-            len(gtfs.stops), len(gtfs.routes),
-        )
+    gtfs_path = ensure_gtfs_path()
+    logger.info("Loading GTFS from %s", gtfs_path)
+    gtfs = GTFSData.from_directory(gtfs_path)
+    set_gtfs(gtfs)
+    logger.info(
+        "GTFS loaded: %d stops, %d routes",
+        len(gtfs.stops), len(gtfs.routes),
+    )
+
+
+def _init_auth():
+    """Initialize auth storage and service."""
+    from red_transporte_api.auth.deps import init_auth
+    from red_transporte_api.auth.service import AuthService
+
+    if DB_BACKEND == "mysql":
+        from red_transporte_api.auth.mysql import MySQLAuthStorage
+        storage = MySQLAuthStorage(DB_URL)
     else:
-        logger.warning(
-            "No GTFS data found. Run 'red-transporte gtfs update' to download. "
-            "API will start but GTFS-dependent endpoints will return errors."
-        )
+        from red_transporte_api.auth.sqlite import SQLiteAuthStorage
+        storage = SQLiteAuthStorage(DB_URL)
+
+    storage.initialize(
+        initial_public_api_enabled=PUBLIC_API_ENABLED,
+        initial_public_ip_limit=PUBLIC_IP_LIMIT_PER_MINUTE,
+    )
+    auth_service = AuthService(storage)
+    init_auth(auth_service, MASTER_TOKEN)
+    logger.info("Auth system initialized (master token: %s)", "configured" if MASTER_TOKEN else "NOT SET")
 
 
 def create_app():
@@ -37,6 +52,7 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app):
+        _init_auth()
         _try_load_gtfs()
         yield
 
@@ -49,12 +65,13 @@ def create_app():
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=CORS_ORIGINS,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    from red_transporte_api.api.routes import system, stops, routes, predictions, spatial, gtfs
+    from red_transporte_api.api.routes import admin, system, stops, routes, predictions, spatial, gtfs
+    app.include_router(admin.router)
     app.include_router(system.router)
     app.include_router(stops.router, prefix="/stops", tags=["Paraderos"])
     app.include_router(routes.router, prefix="/routes", tags=["Recorridos"])

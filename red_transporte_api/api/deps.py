@@ -32,7 +32,7 @@ def set_gtfs(gtfs: GTFSData) -> None:
 def get_gtfs() -> GTFSData:
     if _gtfs is None:
         raise RuntimeError(
-            "GTFS data not loaded. Run 'red-transporte gtfs update' first."
+            "GTFS data not loaded. Automatic GTFS download/load did not complete successfully."
         )
     return _gtfs
 

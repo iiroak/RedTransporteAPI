@@ -1,9 +1,11 @@
 """Stop-related API routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from red_transporte_api.api.deps import get_gtfs
+from red_transporte_api.auth.deps import require_access, require_access_for_sources
+from red_transporte_api.auth.models import ResourceType
 from red_transporte_api.models import StopInfo, ServiceInfo, NearbyStop
 
 router = APIRouter()
@@ -13,6 +15,7 @@ router = APIRouter()
 async def search_stops(
     q: str = Query(..., description="Texto de búsqueda (código o nombre parcial)"),
     limit: int = Query(10, ge=1, le=100),
+    _token=Depends(require_access()),
 ):
     """Buscar paraderos por nombre o código."""
     gtfs = get_gtfs()
@@ -29,7 +32,7 @@ async def search_stops(
 
 
 @router.get("/{code}", response_model=StopInfo)
-async def get_stop(code: str):
+async def get_stop(code: str, _token=Depends(require_access())):
     """Obtener información de un paradero por su código."""
     gtfs = get_gtfs()
     stop = gtfs.get_stop(code)
@@ -58,36 +61,49 @@ async def get_stop(code: str):
 
 
 @router.get("/{code}/predictions")
-async def get_stop_predictions(code: str):
-    """Obtener predicciones en tiempo real para un paradero (iBus + RED web)."""
-    from red_transporte_api.api.deps import get_ibus_client, get_red_web_client
+async def get_stop_predictions(code: str, request: Request):
+    """Obtener predicciones en tiempo real para un paradero (iBus + RED web).
 
-    results: dict = {"paradero": {"codigo": code}, "servicios": [], "sources": []}
+    Si el token/carrier no tiene acceso a alguna fuente, esa fuente se omite.
+    """
+    _record, decisions = require_access_for_sources(
+        request,
+        [ResourceType.IBUS, ResourceType.RED_WEB],
+    )
 
-    # Try RED web predictor first
-    try:
-        red_web = get_red_web_client()
-        red_data = await red_web.get_predictions(code)
-        if red_data:
-            results["red_web"] = red_data
-            results["sources"].append("red_web")
-    except Exception:
-        pass
+    results: dict = {"paradero": {"codigo": code}, "servicios": [], "sources": [], "access": {}}
 
-    # Try iBus scraper
-    try:
-        ibus = get_ibus_client()
-        ibus_data = await ibus.get_stop_predictions(code)
-        if ibus_data:
-            results["paradero"] = ibus_data.get("paradero", results["paradero"])
-            results["servicios"] = ibus_data.get("servicios", [])
-            results["sources"].append("ibus")
-    except Exception:
-        pass
+    if decisions[ResourceType.RED_WEB].allowed:
+        try:
+            from red_transporte_api.api.deps import get_red_web_client
+            red_web = get_red_web_client()
+            red_data = await red_web.get_predictions(code)
+            if red_data:
+                results["red_web"] = red_data
+                results["sources"].append("red_web")
+        except Exception:
+            pass
+
+    if decisions[ResourceType.IBUS].allowed:
+        try:
+            from red_transporte_api.api.deps import get_ibus_client
+            ibus = get_ibus_client()
+            ibus_data = await ibus.get_stop_predictions(code)
+            if ibus_data:
+                results["paradero"] = ibus_data.get("paradero", results["paradero"])
+                results["servicios"] = ibus_data.get("servicios", [])
+                results["sources"].append("ibus")
+        except Exception:
+            pass
+
+    results["access"] = {
+        "ibus": decisions[ResourceType.IBUS].allowed,
+        "red_web": decisions[ResourceType.RED_WEB].allowed,
+    }
 
     if not results["sources"]:
         raise HTTPException(
-            status_code=502,
-            detail="No se pudieron obtener predicciones de ninguna fuente",
+            status_code=403,
+            detail="No se tiene acceso a ninguna fuente de predicciones para este paradero",
         )
     return results

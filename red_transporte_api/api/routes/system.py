@@ -1,17 +1,14 @@
 """System routes — root, health, stats."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from red_transporte_api.auth.deps import require_access
 from red_transporte_api.config import VERSION
 from red_transporte_api.models import APIInfo, HealthCheck, SystemStats
+from red_transporte_api.api.deps import get_gtfs
 
 router = APIRouter()
-
-
-@router.get("/", response_model=APIInfo, tags=["Sistema"])
-async def root():
-    return APIInfo(version=VERSION)
 
 
 @router.get("/health", response_model=HealthCheck, tags=["Sistema"])
@@ -20,9 +17,13 @@ async def health():
     return HealthCheck(version=VERSION, gtfs_loaded=_gtfs is not None)
 
 
+@router.get("/", response_model=APIInfo, tags=["Sistema"])
+async def root():
+    return APIInfo(version=VERSION)
+
+
 @router.get("/stats", response_model=SystemStats, tags=["Sistema"])
-async def stats():
-    from red_transporte_api.api.deps import get_gtfs
+async def stats(_token=Depends(require_access())):
     gtfs = get_gtfs()
     stops = [s for s in gtfs.stops.values() if s.location_type == 0]
     return SystemStats(

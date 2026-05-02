@@ -23,16 +23,10 @@ from typing import Any
 
 
 def _load_gtfs():
-    from red_transporte_api.gtfs.downloader import get_gtfs_path
+    from red_transporte_api.gtfs.downloader import ensure_gtfs_path
     from red_transporte_api.gtfs.parser import GTFSData
 
-    path = get_gtfs_path()
-    if not path:
-        print(
-            "Error: No hay datos GTFS. Ejecuta 'red-transporte gtfs update' primero.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    path = ensure_gtfs_path()
     return GTFSData.from_directory(path)
 
 

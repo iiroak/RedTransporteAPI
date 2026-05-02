@@ -1,9 +1,11 @@
 """Geospatial auxiliary routes — nearby stops, stations, bounding box, route suggestions, routing."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from red_transporte_api.api.deps import get_gtfs, get_router
+from red_transporte_api.auth.deps import require_access
+from red_transporte_api.auth.models import ResourceType
 from red_transporte_api.gtfs import spatial as geo
 from red_transporte_api.gtfs.parser import haversine
 from red_transporte_api.gtfs.router import secs_to_human
@@ -18,6 +20,7 @@ async def nearby_stops(
     lon: float = Query(..., description="Longitud (ej: -70.6506)"),
     radius: float = Query(0.5, description="Radio en km"),
     limit: int = Query(20, ge=1, le=100),
+    _token=Depends(require_access()),
 ):
     """Encontrar paraderos dentro de un radio desde una coordenada."""
     gtfs = get_gtfs()
@@ -38,6 +41,7 @@ async def nearby_stops(
 async def nearest_station(
     lat: float = Query(..., description="Latitud"),
     lon: float = Query(..., description="Longitud"),
+    _token=Depends(require_access()),
 ):
     """Encontrar la estación de metro/tren más cercana."""
     gtfs = get_gtfs()
@@ -69,6 +73,7 @@ async def routes_near_point(
     lat: float = Query(...),
     lon: float = Query(...),
     radius: float = Query(0.3, description="Radio en km"),
+    _token=Depends(require_access()),
 ):
     """Encontrar recorridos que pasan cerca de una coordenada."""
     gtfs = get_gtfs()
@@ -91,6 +96,7 @@ async def stops_in_bbox(
     min_lon: float = Query(...),
     max_lat: float = Query(...),
     max_lon: float = Query(...),
+    _token=Depends(require_access()),
 ):
     """Obtener paraderos dentro de un bounding box."""
     gtfs = get_gtfs()
@@ -98,7 +104,7 @@ async def stops_in_bbox(
     return [
         {
             "stop_id": s.stop_id,
-            "stop_name": s.clean_name,
+            "stop_name": s.stop_name,
             "latitude": s.stop_lat,
             "longitude": s.stop_lon,
         }
@@ -113,6 +119,7 @@ async def suggest_routes(
     to_lat: float = Query(..., description="Latitud destino"),
     to_lon: float = Query(..., description="Longitud destino"),
     radius: float = Query(0.5, description="Radio de búsqueda en km"),
+    _token=Depends(require_access()),
 ):
     """
     Sugerir recorridos que conecten dos puntos.
@@ -140,6 +147,7 @@ async def plan_route(
     max_results: int = Query(3, ge=1, le=5, description="Máximo de alternativas"),
     max_transfers: int = Query(2, ge=0, le=3, description="Máximo de transbordos"),
     fare_type: str = Query("normal", description="Tipo tarifa: normal, estudiante, adulto_mayor"),
+    _token=Depends(require_access(ResourceType.RAPTOR)),
 ):
     """
     Planificar ruta de transporte público entre dos coordenadas (RAPTOR).

@@ -18,11 +18,11 @@ Esta skill esta enfocada exclusivamente en el uso de la CLI `red-transporte`.
 
 - Python 3.9 o superior
 - Instalar dependencias del proyecto
-- Descargar GTFS local antes de consultas que usan datos estaticos
+- El GTFS se descarga automaticamente en el primer uso; `gtfs update` sirve para precalentar o forzar refresh
 
 ```bash
-pip install ".[all]"
-red-transporte gtfs update
+uv sync --extra all
+uv run red-transporte gtfs update
 ```
 
 ## Sintaxis general
@@ -274,7 +274,7 @@ Salida esperada:
 
 ## Flujo recomendado de uso CLI
 
-1. Descargar GTFS: `red-transporte gtfs update`
+1. Opcional: precalentar GTFS con `uv run red-transporte gtfs update`
 2. Verificar estado: `red-transporte gtfs status`
 3. Consultar paraderos/recorridos: `stop`, `search`, `route`, `routes`
 4. Consultar tiempo real: `predict`
@@ -386,7 +386,7 @@ El campo `fare.breakdown` muestra por cada tramo de transporte:
 
 ## Notas operativas CLI
 
-- Si no existe GTFS local, varios comandos fallaran hasta ejecutar `red-transporte gtfs update`.
+- Si no existe GTFS local, el primer comando que lo necesite disparara una descarga automatica y puede tardar mientras baja el dataset.
 - `predict` consulta fuentes en tiempo real y puede variar entre llamadas.
 - Para integraciones de scripts, usar siempre `--json`.
 - El planificador RAPTOR solo esta disponible via la API HTTP (`/routing/plan`), no via CLI.

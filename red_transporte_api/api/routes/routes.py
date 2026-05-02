@@ -1,9 +1,11 @@
 """Route-related API routes."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from red_transporte_api.api.deps import get_gtfs
+from red_transporte_api.auth.deps import require_access
+from red_transporte_api.auth.models import ResourceType
 from red_transporte_api.models import RouteInfo, RouteBasic, RouteShape, RouteStopBasic, RouteStopSequence, FrequencySlot
 
 router = APIRouter()
@@ -12,6 +14,7 @@ router = APIRouter()
 @router.get("", response_model=list[RouteBasic])
 async def list_routes(
     mode: str | None = Query(None, description="Filtrar por modo: bus, metro, rail, tram"),
+    _token=Depends(require_access()),
 ):
     """Listar todos los recorridos disponibles."""
     gtfs = get_gtfs()
@@ -31,7 +34,7 @@ async def list_routes(
 
 
 @router.get("/{route_id}", response_model=RouteInfo)
-async def get_route(route_id: str):
+async def get_route(route_id: str, _token=Depends(require_access())):
     """Obtener información detallada de un recorrido."""
     gtfs = get_gtfs()
     route = gtfs.get_route(route_id)
@@ -63,6 +66,7 @@ async def get_route(route_id: str):
 async def get_route_stops(
     route_id: str,
     direction: int = Query(0, ge=0, le=1, description="0=ida, 1=vuelta"),
+    _token=Depends(require_access()),
 ):
     """Obtener la lista ordenada de paraderos de un recorrido."""
     gtfs = get_gtfs()
@@ -86,6 +90,7 @@ async def get_route_stops(
 async def get_route_shape(
     route_id: str,
     direction: int = Query(0, ge=0, le=1),
+    _token=Depends(require_access()),
 ):
     """Obtener la geometría (shape) de un recorrido en formato GeoJSON-compatible."""
     gtfs = get_gtfs()

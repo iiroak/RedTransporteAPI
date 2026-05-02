@@ -33,7 +33,7 @@ from typing import Any
 from red_transporte_api.gtfs.parser import GTFSData
 from red_transporte_api.gtfs import spatial as geo
 from red_transporte_api.gtfs.downloader import (
-    get_gtfs_path,
+    ensure_gtfs_path,
     get_gtfs_status,
     download_latest_gtfs,
 )
@@ -42,13 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 def _load_gtfs() -> GTFSData:
-    path = get_gtfs_path()
-    if path:
-        return GTFSData.from_directory(path)
-    raise FileNotFoundError(
-        "No GTFS data found. Run 'red-transporte gtfs update' to download, "
-        "or download manually from https://www.dtpm.cl/index.php/noticias/gtfs-vigente"
-    )
+    path = ensure_gtfs_path()
+    return GTFSData.from_directory(path)
 
 
 class RedTransporteTools:

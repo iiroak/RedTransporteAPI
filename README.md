@@ -31,20 +31,20 @@ Este repositorio incluye una skill en la carpeta `skill/` para integrar y usar a
 
 ## Instalación
 
-### Rápida (pip)
+### Rápida (uv)
 
 ```bash
 # Solo CLI
-pip install .
+uv sync
 
 # CLI + API HTTP
-pip install ".[api]"
+uv sync --extra api
 
 # Todo (CLI + API + rich output)
-pip install ".[all]"
+uv sync --extra all
 
 # Desarrollo
-pip install ".[dev]"
+uv sync --extra dev
 ```
 
 ### Linux (script automatizado)
@@ -58,63 +58,63 @@ bash <(curl -sSL https://raw.githubusercontent.com/iiroak/RedTransporteAPI/main/
 ```bash
 git clone https://github.com/iiroak/RedTransporteAPI.git
 cd RedTransporteAPI
-pip install ".[all]"
+uv sync --extra all
 ```
 
 ## Inicio rápido
 
-### 1. Descargar datos GTFS
+### 1. Datos GTFS
 
 ```bash
-red-transporte gtfs update
+uv run red-transporte gtfs update
 ```
 
-Esto descarga automáticamente el último GTFS desde DTPM (~50MB) y lo extrae en `~/.red_transporte/gtfs/`.
+El GTFS se descarga automáticamente en el primer uso si no existe un dataset local. Este comando sigue siendo útil para precalentar la cache o forzar la descarga manualmente. Los datos se extraen en `~/.red_transporte/gtfs/`.
 
 ### 2. CLI
 
 ```bash
 # Info de un paradero
-red-transporte stop PA433
+uv run red-transporte stop PA433
 
 # Buscar paraderos
-red-transporte search "providencia"
+uv run red-transporte search "providencia"
 
 # Paraderos cercanos (Plaza Italia)
-red-transporte nearby -33.4372 -70.6506
+uv run red-transporte nearby -33.4372 -70.6506
 
 # Estación de metro más cercana
-red-transporte station -33.45 -70.65
+uv run red-transporte station -33.45 -70.65
 
 # Info de un recorrido
-red-transporte route 506
+uv run red-transporte route 506
 
 # Listar recorridos de metro
-red-transporte routes --mode metro
+uv run red-transporte routes --mode metro
 
 # Predicciones en tiempo real
-red-transporte predict PA433
+uv run red-transporte predict PA433
 
 # Sugerir recorridos entre dos puntos
-red-transporte suggest -33.4372 -70.6506 -33.4189 -70.6024
+uv run red-transporte suggest -33.4372 -70.6506 -33.4189 -70.6024
 
 # Estadísticas del sistema
-red-transporte stats
+uv run red-transporte stats
 
 # Estado de los datos GTFS
-red-transporte gtfs status
+uv run red-transporte gtfs status
 
 # Salida JSON (para scripting/pipelines)
-red-transporte stop PA433 --json
+uv run red-transporte stop PA433 --json
 ```
 
 ### 3. API HTTP
 
 ```bash
 # Iniciar servidor
-red-transporte server
+uv run red-transporte server
 # o directamente:
-red-transporte-server
+uv run red-transporte-server
 ```
 
 Swagger UI en: http://localhost:8000/docs
@@ -196,7 +196,22 @@ result = tools.call_tool("get_stop_info", {"stop_code": "PA433"})
 | Método | Ruta | Descripción |
 |--------|------|-------------|
 | GET | `/gtfs/status` | Estado de los datos GTFS |
-| POST | `/gtfs/update?force=false` | Descargar/actualizar GTFS |
+| POST | `/gtfs/update?force=false` | Descargar/actualizar GTFS (admin only) |
+
+### Admin
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/admin/settings` | Obtener configuración actual |
+| PATCH | `/admin/settings` | Actualizar configuración |
+| POST | `/admin/tokens` | Crear nuevo token de API |
+| GET | `/admin/tokens` | Listar todos los tokens |
+| GET | `/admin/tokens/{id}` | Detalle de un token |
+| PATCH | `/admin/tokens/{id}` | Actualizar un token |
+| DELETE | `/admin/tokens/{id}` | Eliminar un token |
+
+> Todos los endpoints `/admin/*` requieren `Authorization: Bearer <master_token>`.
+> El token maestro se define via `RED_TRANSPORTE_MASTER_TOKEN` en `.env`.
 
 ## Planificador de rutas (RAPTOR)
 
@@ -358,17 +373,71 @@ red_transporte_api/
 
 ## Configuración
 
-Variables de entorno:
+### Variables de entorno
 
 | Variable | Default | Descripción |
 |----------|---------|-------------|
-| `RED_TRANSPORTE_DATA_DIR` | `~/.red_transporte` | Directorio de datos |
+| `RED_TRANSPORTE_DATA_DIR` | `~/.red_transporte` | Directorio de datos (GTFS + SQLite DB) |
 | `RED_TRANSPORTE_HOST` | `0.0.0.0` | Host del servidor API |
 | `RED_TRANSPORTE_PORT` | `8000` | Puerto del servidor API |
+| `RED_TRANSPORTE_MASTER_TOKEN` | _(vacío)_ | Token maestro para admin (requerido para `/admin/*`) |
+| `RED_TRANSPORTE_DB_BACKEND` | `sqlite` | Backend de persistencia: `sqlite` o `mysql` |
+| `RED_TRANSPORTE_DB_URL` | _(ver default)_ | URL de conexión MySQL (cuando `DB_BACKEND=mysql`) |
+| `RED_TRANSPORTE_PUBLIC_API` | `true` | Habilitar acceso público sin token |
+| `RED_TRANSPORTE_PUBLIC_IP_RPM` | `20` | Límite de requests por minuto para IPs públicas |
+| `RED_TRANSPORTE_TRUST_PROXY` | `false` | Confiar `X-Forwarded-For` (solo detrás de proxy conocido) |
+| `RED_TRANSPORTE_CORS_ORIGINS` | `*` | Orígenes CORS permitidos (comma-separated, `*` para todos) |
 | `RED_API_BASE_URL` | `https://appred.tstgo.cl` | URL base API RED |
 | `RED_IBUS_URL` | `http://m.ibus.cl/Servlet` | URL de iBus |
 | `RED_IBUS_TIMEOUT` | `15` | Timeout iBus (segundos) |
 | `RED_IBUS_CACHE_TTL` | `30` | Cache TTL iBus (segundos) |
+
+## Docker
+
+La imagen oficial está publicada en GitHub Container Registry:
+
+```
+docker pull ghcr.io/iiroak/redtransporteapi:latest
+```
+
+### docker-compose
+
+```yaml
+services:
+  api:
+    image: ghcr.io/iiroak/redtransporteapi:latest
+    env_file: .env
+    environment:
+      - RED_TRANSPORTE_DATA_DIR=/data
+    ports:
+      - "8000:8000"
+    volumes:
+      - red_transporte_data:/data
+    restart: unless-stopped
+```
+
+> **Nota:** en el primer arranque el contenedor descarga automáticamente el GTFS (~150 MB) si no existe en el volumen. Para precalentar antes de desplegar:
+> ```bash
+> docker run --rm -v red_transporte_data:/data ghcr.io/iiroak/redtransporteapi:latest \
+>   uv run red-transporte gtfs update
+> ```
+
+### Build local
+
+```bash
+git clone https://github.com/iiroak/RedTransporteAPI.git
+cd RedTransporteAPI
+docker compose up --build
+```
+
+### Variables mínimas para producción
+
+```env
+RED_TRANSPORTE_MASTER_TOKEN=<generar con: python -c "import secrets; print(secrets.token_urlsafe(32))">
+RED_TRANSPORTE_PUBLIC_API=false       # exigir token para todo el tráfico
+RED_TRANSPORTE_TRUST_PROXY=false      # no confiar X-Forwarded-For fuera de un proxy conocido
+RED_TRANSPORTE_CORS_ORIGINS=https://tu-dashboard.com
+```
 
 ## Licencia
 

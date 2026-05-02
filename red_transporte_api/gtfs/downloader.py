@@ -63,6 +63,15 @@ def get_gtfs_path() -> Path | None:
     return None
 
 
+def ensure_gtfs_path(force_download: bool = False) -> Path:
+    """Return a local GTFS directory, downloading it when missing."""
+    existing = get_gtfs_path()
+    if existing and not force_download:
+        return existing
+    logger.info("No local GTFS data found. Downloading latest dataset...")
+    return download_latest_gtfs(force=force_download)
+
+
 def is_gtfs_outdated(max_age_days: int = 30) -> bool:
     """Check if the local GTFS data is outdated or missing."""
     meta = _read_metadata()

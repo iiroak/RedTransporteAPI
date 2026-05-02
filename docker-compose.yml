@@ -1,0 +1,23 @@
+services:
+  api:
+    image: ghcr.io/iiroak/redtransporteapi:latest
+    # For local development, comment out the image line above and uncomment the build section below:
+    # build: https://github.com/iiroak/RedTransporteAPI.git
+    env_file: .env
+    environment:
+      - RED_TRANSPORTE_DATA_DIR=/data
+    ports:
+      - "8000:8000"
+    volumes:
+      - red_transporte_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # first boot may auto-download GTFS (~150 MB)
+
+volumes:
+  red_transporte_data:
