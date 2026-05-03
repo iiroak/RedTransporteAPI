@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,7 @@ class SQLiteAuthStorage(AuthStorage):
     def __init__(self, db_path: str | Path):
         self._db_path = Path(db_path)
         self._conn: Optional[sqlite3.Connection] = None
+        self._lock = threading.Lock()
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
@@ -21,6 +23,14 @@ class SQLiteAuthStorage(AuthStorage):
         return self._conn
 
     def initialize(
+        self,
+        initial_public_api_enabled: bool = True,
+        initial_public_ip_limit: int = 20,
+    ) -> None:
+        with self._lock:
+            self._initialize_locked(initial_public_api_enabled, initial_public_ip_limit)
+
+    def _initialize_locked(
         self,
         initial_public_api_enabled: bool = True,
         initial_public_ip_limit: int = 20,
@@ -68,110 +78,121 @@ class SQLiteAuthStorage(AuthStorage):
         self._cleanup_old_rate_counters(conn)
 
     def get_settings(self) -> APISettings:
-        conn = self._connect()
-        row = conn.execute("SELECT public_api_enabled, public_ip_limit_per_minute, updated_at FROM api_settings WHERE id = 1").fetchone()
-        return APISettings(
-            public_api_enabled=bool(row["public_api_enabled"]),
-            public_ip_limit_per_minute=row["public_ip_limit_per_minute"],
-            updated_at=row["updated_at"],
-        )
+        with self._lock:
+            conn = self._connect()
+            row = conn.execute("SELECT public_api_enabled, public_ip_limit_per_minute, updated_at FROM api_settings WHERE id = 1").fetchone()
+            return APISettings(
+                public_api_enabled=bool(row["public_api_enabled"]),
+                public_ip_limit_per_minute=row["public_ip_limit_per_minute"],
+                updated_at=row["updated_at"],
+            )
 
     def update_settings(self, settings: APISettings) -> None:
-        conn = self._connect()
-        conn.execute(
-            "UPDATE api_settings SET public_api_enabled = ?, public_ip_limit_per_minute = ?, updated_at = datetime('now') WHERE id = 1",
-            (int(settings.public_api_enabled), settings.public_ip_limit_per_minute),
-        )
-        conn.commit()
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "UPDATE api_settings SET public_api_enabled = ?, public_ip_limit_per_minute = ?, updated_at = datetime('now') WHERE id = 1",
+                (int(settings.public_api_enabled), settings.public_ip_limit_per_minute),
+            )
+            conn.commit()
 
     def create_token(self, name: str, token_hash: str, is_unlimited: bool, requests_per_minute: int, allow_gtfs: bool, allow_ibus: bool, allow_red_web: bool, allow_raptor: bool) -> int:
-        conn = self._connect()
-        cursor = conn.execute(
-            "INSERT INTO api_tokens (name, token_hash, is_unlimited, requests_per_minute, allow_gtfs, allow_ibus, allow_red_web, allow_raptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (name, token_hash, int(is_unlimited), requests_per_minute, int(allow_gtfs), int(allow_ibus), int(allow_red_web), int(allow_raptor)),
-        )
-        conn.commit()
-        return cursor.lastrowid
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute(
+                "INSERT INTO api_tokens (name, token_hash, is_unlimited, requests_per_minute, allow_gtfs, allow_ibus, allow_red_web, allow_raptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, token_hash, int(is_unlimited), requests_per_minute, int(allow_gtfs), int(allow_ibus), int(allow_red_web), int(allow_raptor)),
+            )
+            conn.commit()
+            return cursor.lastrowid
 
     def get_token_by_hash(self, token_hash: str) -> Optional[TokenRecord]:
-        conn = self._connect()
-        row = conn.execute("SELECT * FROM api_tokens WHERE token_hash = ?", (token_hash,)).fetchone()
-        if not row:
-            return None
-        return self._row_to_token_record(row)
+        with self._lock:
+            conn = self._connect()
+            row = conn.execute("SELECT * FROM api_tokens WHERE token_hash = ?", (token_hash,)).fetchone()
+            if not row:
+                return None
+            return self._row_to_token_record(row)
 
     def list_tokens(self) -> list[TokenRecord]:
-        conn = self._connect()
-        rows = conn.execute("SELECT * FROM api_tokens ORDER BY created_at DESC").fetchall()
-        return [self._row_to_token_record(r) for r in rows]
+        with self._lock:
+            conn = self._connect()
+            rows = conn.execute("SELECT * FROM api_tokens ORDER BY created_at DESC").fetchall()
+            return [self._row_to_token_record(r) for r in rows]
 
     def get_token_by_id(self, token_id: int) -> Optional[TokenRecord]:
-        conn = self._connect()
-        row = conn.execute("SELECT * FROM api_tokens WHERE id = ?", (token_id,)).fetchone()
-        if not row:
-            return None
-        return self._row_to_token_record(row)
+        with self._lock:
+            conn = self._connect()
+            row = conn.execute("SELECT * FROM api_tokens WHERE id = ?", (token_id,)).fetchone()
+            if not row:
+                return None
+            return self._row_to_token_record(row)
 
     def update_token(self, token_id: int, name: Optional[str] = None, enabled: Optional[bool] = None, is_unlimited: Optional[bool] = None, requests_per_minute: Optional[int] = None, allow_gtfs: Optional[bool] = None, allow_ibus: Optional[bool] = None, allow_red_web: Optional[bool] = None, allow_raptor: Optional[bool] = None) -> None:
-        conn = self._connect()
-        fields, values = [], []
-        if name is not None:
-            fields.append("name = ?")
-            values.append(name)
-        if enabled is not None:
-            fields.append("enabled = ?")
-            values.append(int(enabled))
-        if is_unlimited is not None:
-            fields.append("is_unlimited = ?")
-            values.append(int(is_unlimited))
-        if requests_per_minute is not None:
-            fields.append("requests_per_minute = ?")
-            values.append(requests_per_minute)
-        if allow_gtfs is not None:
-            fields.append("allow_gtfs = ?")
-            values.append(int(allow_gtfs))
-        if allow_ibus is not None:
-            fields.append("allow_ibus = ?")
-            values.append(int(allow_ibus))
-        if allow_red_web is not None:
-            fields.append("allow_red_web = ?")
-            values.append(int(allow_red_web))
-        if allow_raptor is not None:
-            fields.append("allow_raptor = ?")
-            values.append(int(allow_raptor))
-        if not fields:
-            return
-        values.append(token_id)
-        conn.execute(f"UPDATE api_tokens SET {', '.join(fields)} WHERE id = ?", values)
-        conn.commit()
+        with self._lock:
+            conn = self._connect()
+            fields, values = [], []
+            if name is not None:
+                fields.append("name = ?")
+                values.append(name)
+            if enabled is not None:
+                fields.append("enabled = ?")
+                values.append(int(enabled))
+            if is_unlimited is not None:
+                fields.append("is_unlimited = ?")
+                values.append(int(is_unlimited))
+            if requests_per_minute is not None:
+                fields.append("requests_per_minute = ?")
+                values.append(requests_per_minute)
+            if allow_gtfs is not None:
+                fields.append("allow_gtfs = ?")
+                values.append(int(allow_gtfs))
+            if allow_ibus is not None:
+                fields.append("allow_ibus = ?")
+                values.append(int(allow_ibus))
+            if allow_red_web is not None:
+                fields.append("allow_red_web = ?")
+                values.append(int(allow_red_web))
+            if allow_raptor is not None:
+                fields.append("allow_raptor = ?")
+                values.append(int(allow_raptor))
+            if not fields:
+                return
+            values.append(token_id)
+            conn.execute(f"UPDATE api_tokens SET {', '.join(fields)} WHERE id = ?", values)
+            conn.commit()
 
     def delete_token(self, token_id: int) -> None:
-        conn = self._connect()
-        conn.execute("DELETE FROM api_tokens WHERE id = ?", (token_id,))
-        conn.commit()
+        with self._lock:
+            conn = self._connect()
+            conn.execute("DELETE FROM api_tokens WHERE id = ?", (token_id,))
+            conn.commit()
 
     def update_token_last_used(self, token_id: int) -> None:
-        conn = self._connect()
-        conn.execute("UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?", (token_id,))
-        conn.commit()
+        with self._lock:
+            conn = self._connect()
+            conn.execute("UPDATE api_tokens SET last_used_at = datetime('now') WHERE id = ?", (token_id,))
+            conn.commit()
 
     def increment_rate_counter(self, subject_type: str, subject_key: str, resource_type: str, window_start: int) -> int:
-        conn = self._connect()
-        cursor = conn.execute(
-            "INSERT INTO rate_limit_counters (subject_type, subject_key, resource_type, window_start, request_count) VALUES (?, ?, ?, ?, 1) "
-            "ON CONFLICT(subject_type, subject_key, resource_type, window_start) DO UPDATE SET request_count = request_count + 1",
-            (subject_type, subject_key, resource_type, window_start),
-        )
-        conn.commit()
-        return cursor.lastrowid or 0
+        with self._lock:
+            conn = self._connect()
+            cursor = conn.execute(
+                "INSERT INTO rate_limit_counters (subject_type, subject_key, resource_type, window_start, request_count) VALUES (?, ?, ?, ?, 1) "
+                "ON CONFLICT(subject_type, subject_key, resource_type, window_start) DO UPDATE SET request_count = request_count + 1",
+                (subject_type, subject_key, resource_type, window_start),
+            )
+            conn.commit()
+            return cursor.lastrowid or 0
 
     def get_rate_counter(self, subject_type: str, subject_key: str, resource_type: str, window_start: int) -> int:
-        conn = self._connect()
-        row = conn.execute(
-            "SELECT request_count FROM rate_limit_counters WHERE subject_type = ? AND subject_key = ? AND resource_type = ? AND window_start = ?",
-            (subject_type, subject_key, resource_type, window_start),
-        ).fetchone()
-        return row["request_count"] if row else 0
+        with self._lock:
+            conn = self._connect()
+            row = conn.execute(
+                "SELECT request_count FROM rate_limit_counters WHERE subject_type = ? AND subject_key = ? AND resource_type = ? AND window_start = ?",
+                (subject_type, subject_key, resource_type, window_start),
+            ).fetchone()
+            return row["request_count"] if row else 0
 
     def _cleanup_old_rate_counters(self, conn: sqlite3.Connection) -> None:
         """Delete rate-limit windows older than 1 hour to prevent unbounded table growth."""

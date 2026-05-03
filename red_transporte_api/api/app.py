@@ -92,6 +92,8 @@ def run_server():
         host=API_HOST,
         port=API_PORT,
         reload=False,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )
 
 
