@@ -1,0 +1,91 @@
+2026-May-03 07:13:26.046516 Docker 29.4.1 with BuildKit and Buildx detected on deployment server (localhost).
+2026-May-03 07:13:26.058071 Starting deployment of iiroak/RedTransporteAPI:main to localhost.
+2026-May-03 07:13:26.193269 Preparing container with helper image: ghcr.io/coollabsio/coolify-helper:1.0.13
+2026-May-03 07:13:29.381313 ----------------------------------------
+2026-May-03 07:13:29.392789 Importing iiroak/RedTransporteAPI:main (commit sha 8fdbecbec4870e8372712578db3cdb6ca7b69842) to /artifacts/v1426ulgjmmwcxh105slu81f.
+2026-May-03 07:13:31.650159 Image not found (bfwzmq0izvbnprstojzei9rh:8fdbecbec4870e8372712578db3cdb6ca7b69842). Building new image.
+2026-May-03 07:13:32.658877 ----------------------------------------
+2026-May-03 07:13:32.662382 Building docker image started.
+2026-May-03 07:13:32.665591 To check the current progress, click on Show Debug Logs.
+2026-May-03 07:13:34.446065 ========================================
+2026-May-03 07:13:34.450083 Deployment failed: Command execution failed (exit code 1): docker exec v1426ulgjmmwcxh105slu81f bash -c 'bash /artifacts/build.sh'
+2026-May-03 07:13:34.450083 Error: #0 building with "default" instance using docker driver
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #1 [internal] load build definition from Dockerfile
+2026-May-03 07:13:34.450083 #1 transferring dockerfile: 1.20kB done
+2026-May-03 07:13:34.450083 #1 DONE 0.0s
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+2026-May-03 07:13:34.450083 #2 DONE 0.5s
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #3 docker-image://docker.io/docker/dockerfile:1@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769
+2026-May-03 07:13:34.450083 #3 resolve docker.io/docker/dockerfile:1@sha256:2780b5c3bab67f1f76c781860de469442999ed1a0d7992a5efdf2cffc0e3d769 0.0s done
+2026-May-03 07:13:34.450083 #3 CACHED
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #4 [internal] load metadata for docker.io/library/python:3.12-slim
+2026-May-03 07:13:34.450083 #4 ...
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #5 [auth] astral-sh/uv:pull token for ghcr.io
+2026-May-03 07:13:34.450083 #5 DONE 0.0s
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #6 [internal] load metadata for ghcr.io/astral-sh/uv:latest
+2026-May-03 07:13:34.450083 #6 ERROR: failed to authorize: failed to fetch oauth token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Aastral-sh%2Fuv%3Apull&service=ghcr.io: 403 Forbidden
+2026-May-03 07:13:34.450083 
+2026-May-03 07:13:34.450083 #4 [internal] load metadata for docker.io/library/python:3.12-slim
+2026-May-03 07:13:34.450083 #4 CANCELED
+2026-May-03 07:13:34.450083 ------
+2026-May-03 07:13:34.450083 > [internal] load metadata for ghcr.io/astral-sh/uv:latest:
+2026-May-03 07:13:34.450083 ------
+2026-May-03 07:13:34.450083 Dockerfile:7
+2026-May-03 07:13:34.450083 --------------------
+2026-May-03 07:13:34.450083 5 |
+2026-May-03 07:13:34.450083 6 |     # Install uv
+2026-May-03 07:13:34.450083 7 | >>> COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+2026-May-03 07:13:34.450083 8 |
+2026-May-03 07:13:34.450083 9 |     WORKDIR /app
+2026-May-03 07:13:34.450083 --------------------
+2026-May-03 07:13:34.450083 ERROR: failed to build: failed to solve: failed to fetch oauth token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Aastral-sh%2Fuv%3Apull&service=ghcr.io: 403 Forbidden
+2026-May-03 07:13:34.450083 exit status 1
+2026-May-03 07:13:34.483930 ========================================
+2026-May-03 07:13:34.487303 Deployment failed. Removing the new version of your application.
+2026-May-03 07:13:34.767479 Gracefully shutting down build container: v1426ulgjmmwcxh105slu81f
+
+
+
+El error se debe a un problema de autenticación (credenciales) al intentar descargar una imagen desde GitHub Container Registry (ghcr.io) durante la construcción del contenedor.
+
+Específicamente, está fallando en la línea 7 de tu Dockerfile:
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+El registro muestra un error 403 Forbidden:
+
+    ERROR: failed to authorize: failed to fetch oauth token... 403 Forbidden
+
+Causa Principal
+
+Dado que la herramienta astral-sh/uv es pública, este error generalmente ocurre porque el motor de Docker en tu servidor tiene credenciales guardadas que son inválidas o han expirado para ghcr.io (como un token de acceso personal o PAT antiguo de GitHub). Al intentar descargar la imagen, Docker envía esas credenciales caducadas en lugar de hacer una solicitud pública anónima, y GitHub rechaza la conexión.
+Soluciones
+
+1. Cerrar sesión en ghcr.io (Recomendado)
+Accede por SSH a tu servidor (el que aparece como localhost en los logs de the deployment platform) y ejecuta el siguiente comando para borrar las credenciales cacheadas de Docker:
+Bash
+
+docker logout ghcr.io
+
+Una vez ejecutado, vuelve a lanzar el despliegue en the deployment platform.
+
+2. Actualizar las credenciales
+Si tu servidor o the deployment platform necesitan estar autenticados obligatoriamente en ghcr.io (porque usas otras imágenes que son privadas):
+
+    Genera un nuevo Personal Access Token (PAT) en GitHub asegurándote de marcar el permiso read:packages.
+
+    Actualiza el token en la configuración de "Private Registries" o "Sources" dentro de the deployment platform, o vuelve a iniciar sesión en el servidor con docker login ghcr.io.
+
+3. Modificar el Dockerfile (Alternativa)
+Si no quieres lidiar con el registro de GitHub, puedes cambiar la forma en la que instalas uv en tu código. Reemplaza la línea del COPY en tu Dockerfile por la instalación directa vía pip (asumiendo que tu imagen base tiene Python):
+Dockerfile
+
+# Elimina: COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Usa esto en su lugar:
+RUN pip install uv
+
