@@ -445,4 +445,4 @@ RED_TRANSPORTE_CORS_ORIGINS=https://tu-dashboard.com
 
 ## Licencia
 
-MIT
+GPL-3.0-only — Ver [LICENSE](LICENSE) para más detalles.

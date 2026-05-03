@@ -121,10 +121,10 @@ class AuthService:
             allowed = record.allow_gtfs if record else True
             return AccessDecision(allowed=allowed, reason="gtfs not allowed" if not allowed else "public gtfs")
         if resource == ResourceType.IBUS:
-            allowed = record.allow_ibus if record else False
+            allowed = record.allow_ibus if record else True
             return AccessDecision(allowed=allowed, reason="ibus not allowed" if not allowed else "allowed")
         if resource == ResourceType.RED_WEB:
-            allowed = record.allow_red_web if record else False
+            allowed = record.allow_red_web if record else True
             return AccessDecision(allowed=allowed, reason="red_web not allowed" if not allowed else "allowed")
         if resource == ResourceType.RAPTOR:
             allowed = record.allow_raptor if record else False

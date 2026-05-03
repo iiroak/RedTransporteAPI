@@ -1,12 +1,16 @@
 """Stop-related API routes."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from red_transporte_api.api.deps import get_gtfs
 from red_transporte_api.auth.deps import require_access, require_access_for_sources
 from red_transporte_api.auth.models import ResourceType
 from red_transporte_api.models import StopInfo, ServiceInfo, NearbyStop
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,8 +85,8 @@ async def get_stop_predictions(code: str, request: Request):
             if red_data:
                 results["red_web"] = red_data
                 results["sources"].append("red_web")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("RED web predictor failed for %s: %s", code, e)
 
     if decisions[ResourceType.IBUS].allowed:
         try:
@@ -93,8 +97,8 @@ async def get_stop_predictions(code: str, request: Request):
                 results["paradero"] = ibus_data.get("paradero", results["paradero"])
                 results["servicios"] = ibus_data.get("servicios", [])
                 results["sources"].append("ibus")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("iBus failed for %s: %s", code, e)
 
     results["access"] = {
         "ibus": decisions[ResourceType.IBUS].allowed,

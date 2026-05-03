@@ -7,7 +7,7 @@ name = "red-transporte-api"
 version = "1.0.0"
 description = "API unificada para el transporte público de Santiago de Chile — GTFS, iBus y RED"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "GPL-3.0-only"}
 requires-python = ">=3.9"
 authors = [
     {name = "RED Transporte Contributors"},
@@ -19,7 +19,7 @@ classifiers = [
     "Environment :: Web Environment",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
