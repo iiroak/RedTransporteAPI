@@ -1,6 +1,8 @@
 """Geospatial auxiliary routes — nearby stops, stations, bounding box, route suggestions, routing."""
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from red_transporte_api.api.deps import get_gtfs, get_router
@@ -13,12 +15,27 @@ from red_transporte_api.models import RoutingResponse, RoutingPlan, RoutingLeg, 
 
 router = APIRouter()
 
+_MAX_RADIUS_KM = 5.0
+_MAX_BBOX_STOPS = 2000
+
+
+def _lat() -> Query:
+    return Query(..., ge=-90.0, le=90.0, description="Latitud (ej: -33.4372)")
+
+
+def _lon() -> Query:
+    return Query(..., ge=-180.0, le=180.0, description="Longitud (ej: -70.6506)")
+
+
+def _radius(default: float) -> Query:
+    return Query(default, gt=0.0, le=_MAX_RADIUS_KM, description="Radio en km")
+
 
 @router.get("/nearby/stops")
 async def nearby_stops(
-    lat: float = Query(..., description="Latitud (ej: -33.4372)"),
-    lon: float = Query(..., description="Longitud (ej: -70.6506)"),
-    radius: float = Query(0.5, description="Radio en km"),
+    lat: float = _lat(),
+    lon: float = _lon(),
+    radius: float = _radius(0.5),
     limit: int = Query(20, ge=1, le=100),
     _token=Depends(require_access()),
 ):
@@ -39,8 +56,8 @@ async def nearby_stops(
 
 @router.get("/nearby/station")
 async def nearest_station(
-    lat: float = Query(..., description="Latitud"),
-    lon: float = Query(..., description="Longitud"),
+    lat: float = _lat(),
+    lon: float = _lon(),
     _token=Depends(require_access()),
 ):
     """Encontrar la estación de metro/tren más cercana."""
@@ -70,9 +87,9 @@ async def nearest_station(
 
 @router.get("/nearby/routes")
 async def routes_near_point(
-    lat: float = Query(...),
-    lon: float = Query(...),
-    radius: float = Query(0.3, description="Radio en km"),
+    lat: float = _lat(),
+    lon: float = _lon(),
+    radius: float = _radius(0.3),
     _token=Depends(require_access()),
 ):
     """Encontrar recorridos que pasan cerca de una coordenada."""
@@ -92,15 +109,25 @@ async def routes_near_point(
 
 @router.get("/bbox/stops")
 async def stops_in_bbox(
-    min_lat: float = Query(...),
-    min_lon: float = Query(...),
-    max_lat: float = Query(...),
-    max_lon: float = Query(...),
+    min_lat: float = _lat(),
+    min_lon: float = _lon(),
+    max_lat: float = _lat(),
+    max_lon: float = _lon(),
     _token=Depends(require_access()),
 ):
     """Obtener paraderos dentro de un bounding box."""
+    if min_lat >= max_lat or min_lon >= max_lon:
+        raise HTTPException(
+            status_code=422,
+            detail="Bounding box inválido: min_lat < max_lat y min_lon < max_lon",
+        )
     gtfs = get_gtfs()
     stops = geo.get_stops_in_bbox(gtfs, min_lat, min_lon, max_lat, max_lon)
+    if len(stops) > _MAX_BBOX_STOPS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Bounding box demasiado grande: {len(stops)} paraderos (máximo {_MAX_BBOX_STOPS}). Acote el área.",
+        )
     return [
         {
             "stop_id": s.stop_id,
@@ -114,11 +141,11 @@ async def stops_in_bbox(
 
 @router.get("/routing/suggest")
 async def suggest_routes(
-    from_lat: float = Query(..., description="Latitud origen"),
-    from_lon: float = Query(..., description="Longitud origen"),
-    to_lat: float = Query(..., description="Latitud destino"),
-    to_lon: float = Query(..., description="Longitud destino"),
-    radius: float = Query(0.5, description="Radio de búsqueda en km"),
+    from_lat: float = _lat(),
+    from_lon: float = _lon(),
+    to_lat: float = _lat(),
+    to_lon: float = _lon(),
+    radius: float = _radius(0.5),
     _token=Depends(require_access()),
 ):
     """
@@ -138,15 +165,21 @@ async def suggest_routes(
 
 @router.get("/routing/plan", response_model=RoutingResponse)
 async def plan_route(
-    from_lat: float = Query(..., description="Latitud origen"),
-    from_lon: float = Query(..., description="Longitud origen"),
-    to_lat: float = Query(..., description="Latitud destino"),
-    to_lon: float = Query(..., description="Longitud destino"),
-    departure_time: str = Query("08:00:00", description="Hora de salida HH:MM:SS"),
-    day: str = Query("L", description="Día: L=laboral, S=sábado, D=domingo"),
+    from_lat: float = _lat(),
+    from_lon: float = _lon(),
+    to_lat: float = _lat(),
+    to_lon: float = _lon(),
+    departure_time: str = Query(
+        "08:00:00",
+        pattern=r"^\d{2}:\d{2}:\d{2}$",
+        description="Hora de salida HH:MM:SS",
+    ),
+    day: Literal["L", "S", "D"] = Query("L", description="Día: L=laboral, S=sábado, D=domingo"),
     max_results: int = Query(3, ge=1, le=5, description="Máximo de alternativas"),
     max_transfers: int = Query(2, ge=0, le=3, description="Máximo de transbordos"),
-    fare_type: str = Query("normal", description="Tipo tarifa: normal, estudiante, adulto_mayor"),
+    fare_type: Literal["normal", "estudiante", "adulto_mayor"] = Query(
+        "normal", description="Tipo tarifa: normal, estudiante, adulto_mayor"
+    ),
     _token=Depends(require_access(ResourceType.RAPTOR)),
 ):
     """

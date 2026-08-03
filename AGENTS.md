@@ -23,16 +23,18 @@
 - API tokens are created via `POST /admin/tokens` (master token required); the raw token is returned only at creation time.
 - Tokens are stored as SHA-256 hashes (never plaintext). Use `AuthService.validate_token()` to verify.
 - Resource scopes: `gtfs_read`, `ibus`, `red_web`, `raptor`, `gtfs_admin`, `system`. Token capabilities gate access per source.
-- Public IP access is available when `public_api_enabled = true` in settings (default); rate limited by `public_ip_limit_per_minute` (default 20 req/min).
-- `require_master_token()` in `auth/deps.py` protects admin routes; `require_access(resource)` gates normal endpoints.
-- For predictions endpoints, `require_access_for_sources()` checks ibus/red_web independently and degrades gracefully when a source is not allowed.
-- Rate limiting: per-minute window, keyed by `subject_type` (ip/token) + `subject_key` + `resource_type`.
-- Storage backends: `RED_TRANSPORTE_DB_BACKEND=sqlite` (default, stores in `~/.red_transporte/red_transporte.db`) or `mysql` for production.
+- `is_unlimited` only skips rate limiting; it NEVER bypasses resource scopes (`AuthService.check_access` always enforces `allow_*`).
+- A present-but-invalid/revoked `Authorization` header returns 401; it never degrades to public access (`_resolve_token_record` in `auth/deps.py`).
+- Public policy (no token, `public_api_enabled = true`): `gtfs_read`/`ibus`/`red_web` allowed, `raptor` denied, all rate limited by IP.
+- For predictions endpoints, `require_access_for_sources()` checks ibus/red_web independently and degrades gracefully when a source is not allowed. When sources ARE allowed but all fail upstream, the route returns 503 (not 403).
+- Rate limiting: per-minute window, keyed by `subject_type` (ip/token) + `subject_key` + `resource_type`. The counter is incremented atomically via `consume_rate_counter` (single conditional UPDATE), so concurrent bursts cannot exceed the limit.
+- Proxy trust: `RED_TRANSPORTE_TRUST_PROXY` (default false) gates proxy-header handling. When false, `CF-Connecting-IP`/`X-Forwarded-For` are ignored entirely and the direct connection IP is used. When true, headers are only trusted if the connection comes from an IP/CIDR in `RED_TRANSPORTE_TRUSTED_PROXY_IPS` (default `127.0.0.1` — the the reverse proxy tunnel ingress). `CF-Connecting-IP` takes precedence over `X-Forwarded-For`. Uvicorn's own proxy middleware stays disabled; all handling lives in `_get_client_ip` (`auth/deps.py`), so `request.client` is always the true connection IP.
+- Storage backends: `RED_TRANSPORTE_DB_BACKEND=sqlite` (default, stores in `~/.red_transporte/red_transporte.db`) or `mysql` for production. Unknown values raise at startup (no silent fallback). SQLite creates its parent dir (0700), the DB file (0600), WAL and a busy_timeout.
 - MySQL support requires `aiomysql` and `RED_TRANSPORTE_DB_BACKEND=mysql`; the same schema applies.
 
 ## Testing
 - There is no repo-local lint, formatter, typecheck, or CI config to rely on; only `pytest` tests are present.
-- Safe focused test commands: `uv run pytest tests/test_auth.py tests/test_gtfs_downloader.py tests/test_gtfs_parser.py tests/test_spatial.py tests/test_ibus.py`.
+- Safe focused test commands: `uv run pytest tests/test_auth.py tests/test_gtfs_downloader.py tests/test_gtfs_downloader_atomic.py tests/test_fare.py tests/test_gtfs_parser.py tests/test_spatial.py tests/test_ibus.py tests/test_api_integration.py`.
 - Do not run `tests/test_router.py` as part of normal pytest collection. It is a manual benchmark-style script, not a real test module: it executes at import time and hard-codes a local GTFS path (`C:\Users\Kaori\Desktop\RED\red_agent\gtfs_data\public_gtfs`).
 
 ## Existing Repo Guidance

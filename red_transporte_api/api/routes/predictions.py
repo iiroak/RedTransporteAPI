@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Path, Request
 
 from red_transporte_api.auth.deps import require_access_for_sources
 from red_transporte_api.auth.models import ResourceType
@@ -12,9 +12,25 @@ from red_transporte_api.api.deps import get_ibus_client, get_red_web_client
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_STOP_CODE = Path(..., min_length=1, max_length=64, description="Código de paradero")
+_SERVICE = Path(..., min_length=1, max_length=32, description="Servicio/recorrido")
+
+
+def _handle_no_sources(results: dict, decisions: dict) -> None:
+    allowed_any = any(d.allowed for d in decisions.values())
+    if not allowed_any:
+        raise HTTPException(
+            status_code=403,
+            detail="No se tiene acceso a ninguna fuente de predicciones",
+        )
+    raise HTTPException(
+        status_code=503,
+        detail="Las fuentes de predicciones no están disponibles en este momento",
+    )
+
 
 @router.get("/{stop_code}")
-async def get_predictions(stop_code: str, request: Request):
+async def get_predictions(request: Request, stop_code: str = _STOP_CODE):
     """
     Obtener predicciones de llegada agregadas de todas las fuentes disponibles.
 
@@ -59,15 +75,16 @@ async def get_predictions(stop_code: str, request: Request):
     }
 
     if not results["sources"]:
-        raise HTTPException(
-            status_code=403,
-            detail="No se tiene acceso a ninguna fuente de predicciones",
-        )
+        _handle_no_sources(results, decisions)
     return results
 
 
 @router.get("/{stop_code}/{service}")
-async def get_predictions_for_service(stop_code: str, service: str, request: Request):
+async def get_predictions_for_service(
+    request: Request,
+    stop_code: str = _STOP_CODE,
+    service: str = _SERVICE,
+):
     """Obtener predicciones filtradas por servicio específico."""
     _record, decisions = require_access_for_sources(
         request,
@@ -109,8 +126,5 @@ async def get_predictions_for_service(stop_code: str, service: str, request: Req
     }
 
     if not results["sources"]:
-        raise HTTPException(
-            status_code=403,
-            detail="No se tiene acceso a ninguna fuente de predicciones",
-        )
+        _handle_no_sources(results, decisions)
     return results

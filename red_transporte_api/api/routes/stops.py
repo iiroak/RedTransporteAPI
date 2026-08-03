@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from red_transporte_api.api.deps import get_gtfs
 from red_transporte_api.auth.deps import require_access, require_access_for_sources
@@ -17,7 +17,12 @@ router = APIRouter()
 
 @router.get("/search", response_model=list[dict])
 async def search_stops(
-    q: str = Query(..., description="Texto de búsqueda (código o nombre parcial)"),
+    q: str = Query(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="Texto de búsqueda (código o nombre parcial)",
+    ),
     limit: int = Query(10, ge=1, le=100),
     _token=Depends(require_access()),
 ):
@@ -36,7 +41,10 @@ async def search_stops(
 
 
 @router.get("/{code}", response_model=StopInfo)
-async def get_stop(code: str, _token=Depends(require_access())):
+async def get_stop(
+    code: str = Path(..., min_length=1, max_length=64),
+    _token=Depends(require_access()),
+):
     """Obtener información de un paradero por su código."""
     gtfs = get_gtfs()
     stop = gtfs.get_stop(code)
@@ -65,7 +73,7 @@ async def get_stop(code: str, _token=Depends(require_access())):
 
 
 @router.get("/{code}/predictions")
-async def get_stop_predictions(code: str, request: Request):
+async def get_stop_predictions(request: Request, code: str = Path(..., min_length=1, max_length=64)):
     """Obtener predicciones en tiempo real para un paradero (iBus + RED web).
 
     Si el token/carrier no tiene acceso a alguna fuente, esa fuente se omite.
@@ -106,8 +114,14 @@ async def get_stop_predictions(code: str, request: Request):
     }
 
     if not results["sources"]:
+        allowed_any = any(d.allowed for d in decisions.values())
+        if not allowed_any:
+            raise HTTPException(
+                status_code=403,
+                detail="No se tiene acceso a ninguna fuente de predicciones para este paradero",
+            )
         raise HTTPException(
-            status_code=403,
-            detail="No se tiene acceso a ninguna fuente de predicciones para este paradero",
+            status_code=503,
+            detail="Las fuentes de predicciones no están disponibles en este momento",
         )
     return results

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import secrets
 from typing import Callable, Optional
 
@@ -37,18 +38,48 @@ def get_rate_limiter() -> RateLimiter:
     return _rate_limiter
 
 
+def _ip_matches_trusted(ip: str, trusted_csv: str) -> bool:
+    """True when *ip* is in the comma-separated trusted proxy list (IPs/CIDRs)."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for entry in trusted_csv.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            if "/" in entry:
+                if addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif addr == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _get_client_ip(request: Request) -> str:
     """Return the real client IP.
 
-    X-Forwarded-For is only trusted when RED_TRANSPORTE_TRUST_PROXY=true.
-    Otherwise the direct connection IP is used to prevent spoofing.
+    Proxy headers are only trusted when RED_TRANSPORTE_TRUST_PROXY=true AND the
+    connection comes from a proxy in RED_TRANSPORTE_TRUSTED_PROXY_IPS (default
+    ``127.0.0.1`` — the the reverse proxy tunnel ingress target).
+
+    ``CF-Connecting-IP`` takes precedence over ``X-Forwarded-For`` because it is
+    the header the reverse proxy guarantees on tunneled traffic. Otherwise the direct
+    connection IP is used, so spoofed headers never change the rate-limit key.
     """
-    from red_transporte_api.config import TRUST_PROXY
-    if TRUST_PROXY:
+    from red_transporte_api.config import TRUST_PROXY, TRUSTED_PROXY_IPS
+    conn_ip = request.client.host if request.client else ""
+    if TRUST_PROXY and _ip_matches_trusted(conn_ip, TRUSTED_PROXY_IPS):
+        cf = request.headers.get("CF-Connecting-IP")
+        if cf:
+            return cf.strip()
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
             return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    return conn_ip or "unknown"
 
 
 def _extract_bearer_token(request: Request) -> Optional[str]:
@@ -71,12 +102,21 @@ def require_master_token(request: Request) -> bool:
     return True
 
 
-def _get_auth_token_record(request: Request) -> Optional[TokenRecord]:
+def _resolve_token_record(request: Request) -> Optional[TokenRecord]:
+    """Return the token record, or None when no Authorization header is present.
+
+    A present-but-invalid/revoked bearer raises 401 instead of silently
+    degrading the request to public access.
+    """
+    if not request.headers.get("Authorization"):
+        return None
     token = _extract_bearer_token(request)
     if not token:
-        return None
-    auth = get_auth_service()
-    return auth.validate_token(token)
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    record = get_auth_service().validate_token(token)
+    if record is None:
+        raise HTTPException(status_code=401, detail="Invalid or revoked token")
+    return record
 
 
 def require_access(resource: Optional[ResourceType] = None) -> Callable:
@@ -99,7 +139,7 @@ def require_access(resource: Optional[ResourceType] = None) -> Callable:
             request.url.path, request.method
         )
 
-        record = _get_auth_token_record(request)
+        record = _resolve_token_record(request)
 
         if record:
             decision = auth.check_access(record, effective_resource)
@@ -153,7 +193,7 @@ def require_access_for_sources(
     settings = auth.get_settings()
     client_ip = _get_client_ip(request)
 
-    record = _get_auth_token_record(request)
+    record = _resolve_token_record(request)
 
     if record is None and not settings.public_api_enabled:
         raise HTTPException(status_code=401, detail="Authentication required")

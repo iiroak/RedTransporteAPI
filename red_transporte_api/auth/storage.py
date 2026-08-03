@@ -60,3 +60,12 @@ class AuthStorage(ABC):
     @abstractmethod
     def get_rate_counter(self, subject_type: str, subject_key: str, resource_type: str, window_start: int) -> int:
         raise NotImplementedError
+
+    @abstractmethod
+    def consume_rate_counter(self, subject_type: str, subject_key: str, resource_type: str, window_start: int, limit: int) -> Optional[int]:
+        """Atomically increment the counter when it is below *limit*.
+
+        Returns the new counter value when the increment was applied, or None
+        when the counter is already at or above *limit*.
+        """
+        raise NotImplementedError

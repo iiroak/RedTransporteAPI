@@ -683,21 +683,23 @@ class TransitRouter:
         - Metro/Tren Nos: $735 baja / $815 valle / $895 punta
         - Integrated: max(bus, metro) for the whole journey
         - Student: $260 flat, Senior: $390 flat
+        - Walk-only journeys cost $0 regardless of fare_type
         """
         periodo = _fare_periodo(dep_secs)
+        transit_legs = [leg for leg in legs if leg.route_id and leg.mode != "walk"]
+        if not transit_legs:
+            return FareInfo(total=0, periodo=periodo, fare_type=fare_type)
         if fare_type == "estudiante":
             return FareInfo(total=STUDENT_FARE, periodo=periodo, fare_type=fare_type)
         if fare_type == "adulto_mayor":
             return FareInfo(total=SENIOR_FARE, periodo=periodo, fare_type=fare_type)
 
         metro_fare = {"punta": METRO_FARE_PUNTA, "valle": METRO_FARE_VALLE, "baja": METRO_FARE_BAJA}[periodo]
-        uses_metro = any(leg.mode in ("metro", "rail") for leg in legs if leg.route_id)
-        uses_bus = any(leg.mode not in ("metro", "rail", "walk") for leg in legs if leg.route_id)
+        uses_metro = any(leg.mode in ("metro", "rail") for leg in transit_legs)
+        uses_bus = any(leg.mode not in ("metro", "rail", "walk") for leg in transit_legs)
         breakdown = []
 
-        for leg in legs:
-            if leg.mode == "walk":
-                continue
+        for leg in transit_legs:
             if leg.mode in ("metro", "rail"):
                 breakdown.append({"mode": leg.mode, "route": leg.route_name, "fare_mode": metro_fare})
             else:
@@ -710,13 +712,12 @@ class TransitRouter:
         else:
             total = 0
 
-        # Show per-leg payment
+        # Per-leg payment: the leg that raises the fare pays the difference.
+        # This guarantees sum(paid) == total for every combination.
         remaining = total
-        for i, bd in enumerate(breakdown):
-            if i == 0:
-                bd["paid"] = min(bd["fare_mode"], remaining)
-                remaining -= bd["paid"]
-            else:
-                bd["paid"] = 0
+        for bd in breakdown:
+            paid = min(bd["fare_mode"], remaining)
+            bd["paid"] = paid
+            remaining -= paid
 
         return FareInfo(total=total, periodo=periodo, fare_type=fare_type, breakdown=breakdown)

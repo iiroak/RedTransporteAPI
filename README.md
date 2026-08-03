@@ -385,7 +385,8 @@ red_transporte_api/
 | `RED_TRANSPORTE_DB_URL` | _(ver default)_ | URL de conexión MySQL (cuando `DB_BACKEND=mysql`) |
 | `RED_TRANSPORTE_PUBLIC_API` | `true` | Habilitar acceso público sin token |
 | `RED_TRANSPORTE_PUBLIC_IP_RPM` | `20` | Límite de requests por minuto para IPs públicas |
-| `RED_TRANSPORTE_TRUST_PROXY` | `false` | Confiar `X-Forwarded-For` (solo detrás de proxy conocido) |
+| `RED_TRANSPORTE_TRUST_PROXY` | `false` | Confiar headers de proxy (`CF-Connecting-IP`, `X-Forwarded-For`) solo si la conexión viene de una IP confiable. Requerido detrás del túnel the reverse proxy |
+| `RED_TRANSPORTE_TRUSTED_PROXY_IPS` | `127.0.0.1` | IPs/CIDRs permitidas para proveer headers de proxy cuando `TRUST_PROXY=true` |
 | `RED_TRANSPORTE_CORS_ORIGINS` | `*` | Orígenes CORS permitidos (comma-separated, `*` para todos) |
 | `RED_TRANSPORTE_GTFS_EAGER_LOAD` | `false` | Cargar GTFS al iniciar (`false` = lazy load para ahorrar RAM) |
 | `RED_TRANSPORTE_GTFS_IDLE_UNLOAD_SECONDS` | `900` | Descargar GTFS/router de RAM tras inactividad (0 deshabilita) |

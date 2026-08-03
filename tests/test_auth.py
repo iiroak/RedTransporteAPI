@@ -119,13 +119,52 @@ class TestRateLimiting:
         allowed, remaining = auth_service.check_rate_limit("ip", "5.5.5.5", "gtfs_read", 5)
         assert allowed is False
 
+    def test_rate_limit_atomic_under_concurrency(self, auth_service):
+        import threading
+        limit = 10
+        accepted = []
+        errors = []
+
+        def worker():
+            try:
+                allowed, _ = auth_service.check_rate_limit("ip", "9.9.9.9", "gtfs_read", limit)
+                if allowed:
+                    accepted.append(1)
+            except Exception as e:  # pragma: no cover - defensive
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker) for _ in range(50)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors
+        assert len(accepted) == limit
+
+    def test_rate_limit_remaining_is_correct(self, auth_service):
+        allowed, remaining = auth_service.check_rate_limit("ip", "1.2.3.4", "gtfs_read", 10)
+        assert allowed is True
+        assert remaining == 9
+
 
 class TestAccessControl:
-    def test_unlimited_token_bypasses_access_check(self, auth_service):
-        created = auth_service.create_token(name="unlimited-test", is_unlimited=True, allow_raptor=False)
-        decision = auth_service.check_access(created, ResourceType.RAPTOR)
-        assert decision.allowed is True
-        assert decision.reason == "unlimited token"
+    def test_unlimited_token_still_enforces_scopes(self, auth_service):
+        created = auth_service.create_token(
+            name="unlimited-no-raptor", is_unlimited=True, allow_raptor=False, allow_gtfs=True,
+        )
+        denied = auth_service.check_access(created, ResourceType.RAPTOR)
+        assert denied.allowed is False
+        allowed = auth_service.check_access(created, ResourceType.GTFS_READ)
+        assert allowed.allowed is True
+
+    def test_unlimited_token_with_all_scopes_allowed(self, auth_service):
+        created = auth_service.create_token(
+            name="unlimited-all", is_unlimited=True,
+            allow_gtfs=True, allow_ibus=True, allow_red_web=True, allow_raptor=True,
+        )
+        for src in [ResourceType.GTFS_READ, ResourceType.IBUS, ResourceType.RED_WEB, ResourceType.RAPTOR]:
+            assert auth_service.check_access(created, src).allowed is True
 
     def test_limited_token_denied_raptor(self, auth_service):
         created = auth_service.create_token(name="limited-no-raptor", allow_raptor=False, allow_gtfs=True)
@@ -136,9 +175,9 @@ class TestAccessControl:
         decision = auth_service.check_access(None, ResourceType.GTFS_READ)
         assert decision.allowed is True
 
-    def test_public_ibus_denied_without_token(self, auth_service):
+    def test_public_ibus_allowed_without_token(self, auth_service):
         decision = auth_service.check_access(None, ResourceType.IBUS)
-        assert decision.allowed is False
+        assert decision.allowed is True
 
     def test_public_raptor_denied_without_token(self, auth_service):
         decision = auth_service.check_access(None, ResourceType.RAPTOR)

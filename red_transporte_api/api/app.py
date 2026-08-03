@@ -28,9 +28,14 @@ def _init_auth():
     if DB_BACKEND == "mysql":
         from red_transporte_api.auth.mysql import MySQLAuthStorage
         storage = MySQLAuthStorage(DB_URL)
-    else:
+    elif DB_BACKEND == "sqlite":
         from red_transporte_api.auth.sqlite import SQLiteAuthStorage
         storage = SQLiteAuthStorage(DB_URL)
+    else:
+        raise RuntimeError(
+            f"RED_TRANSPORTE_DB_BACKEND inválido: {DB_BACKEND!r} "
+            "(valores válidos: sqlite, mysql)"
+        )
 
     storage.initialize(
         initial_public_api_enabled=PUBLIC_API_ENABLED,
@@ -92,8 +97,13 @@ def run_server():
         host=API_HOST,
         port=API_PORT,
         reload=False,
-        proxy_headers=True,
-        forwarded_allow_ips="*",
+        # Proxy headers are handled by _get_client_ip() in auth/deps.py, which
+        # verifies the connection IP against RED_TRANSPORTE_TRUSTED_PROXY_IPS
+        # before trusting CF-Connecting-IP / X-Forwarded-For. Keeping uvicorn's
+        # middleware disabled guarantees request.client is always the real
+        # connection IP, so spoofed headers cannot change the rate-limit key.
+        proxy_headers=False,
+        forwarded_allow_ips="",
     )
 
 

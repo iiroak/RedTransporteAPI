@@ -1,6 +1,7 @@
 """SQLite implementation of AuthStorage."""
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -18,8 +19,21 @@ class SQLiteAuthStorage(AuthStorage):
 
     def _connect(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(self._db_path.parent, 0o700)
+            except OSError:
+                pass
+            self._conn = sqlite3.connect(
+                str(self._db_path), check_same_thread=False, timeout=30
+            )
             self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
+            try:
+                os.chmod(self._db_path, 0o600)
+            except OSError:
+                pass
         return self._conn
 
     def initialize(
@@ -193,6 +207,33 @@ class SQLiteAuthStorage(AuthStorage):
                 (subject_type, subject_key, resource_type, window_start),
             ).fetchone()
             return row["request_count"] if row else 0
+
+    def consume_rate_counter(
+        self, subject_type: str, subject_key: str, resource_type: str, window_start: int, limit: int
+    ) -> Optional[int]:
+        with self._lock:
+            conn = self._connect()
+            conn.execute(
+                "INSERT INTO rate_limit_counters (subject_type, subject_key, resource_type, window_start, request_count) "
+                "VALUES (?, ?, ?, ?, 0) "
+                "ON CONFLICT(subject_type, subject_key, resource_type, window_start) DO NOTHING",
+                (subject_type, subject_key, resource_type, window_start),
+            )
+            cursor = conn.execute(
+                "UPDATE rate_limit_counters SET request_count = request_count + 1 "
+                "WHERE subject_type = ? AND subject_key = ? AND resource_type = ? AND window_start = ? "
+                "AND request_count < ?",
+                (subject_type, subject_key, resource_type, window_start, limit),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT request_count FROM rate_limit_counters "
+                "WHERE subject_type = ? AND subject_key = ? AND resource_type = ? AND window_start = ?",
+                (subject_type, subject_key, resource_type, window_start),
+            ).fetchone()
+            return row["request_count"] if row else None
 
     def _cleanup_old_rate_counters(self, conn: sqlite3.Connection) -> None:
         """Delete rate-limit windows older than 1 hour to prevent unbounded table growth."""

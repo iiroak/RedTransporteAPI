@@ -64,9 +64,16 @@ MASTER_TOKEN = os.getenv("RED_TRANSPORTE_MASTER_TOKEN", "")
 PUBLIC_API_ENABLED = os.getenv("RED_TRANSPORTE_PUBLIC_API", "true").lower() in ("true", "1", "yes")
 PUBLIC_IP_LIMIT_PER_MINUTE = int(os.getenv("RED_TRANSPORTE_PUBLIC_IP_RPM", "20"))
 
-# When True, the first IP in X-Forwarded-For is trusted for rate limiting.
-# Only enable when the service runs behind a known reverse proxy.
+# When True, proxy headers (CF-Connecting-IP, then X-Forwarded-For) are trusted
+# for rate limiting, but ONLY when the connection comes from an IP in
+# RED_TRANSPORTE_TRUSTED_PROXY_IPS. This is the expected setup behind the
+# the reverse proxy tunnel (ingress targets 127.0.0.1). Keep False for direct exposure.
 TRUST_PROXY = os.getenv("RED_TRANSPORTE_TRUST_PROXY", "false").lower() in ("true", "1", "yes")
+
+# Comma-separated IPs/CIDRs allowed to supply proxy headers when TRUST_PROXY is
+# enabled. Only these proxies may set CF-Connecting-IP / X-Forwarded-*;
+# anything else is ignored.
+TRUSTED_PROXY_IPS = os.getenv("RED_TRANSPORTE_TRUSTED_PROXY_IPS", "127.0.0.1")
 
 # Comma-separated list of allowed CORS origins.  Use "*" to allow all origins.
 CORS_ORIGINS: list[str] = [

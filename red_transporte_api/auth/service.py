@@ -108,15 +108,14 @@ class AuthService:
 
     def check_rate_limit(self, subject_type: str, subject_key: str, resource_type: str, limit: int) -> tuple[bool, int]:
         window = int(time.time()) // 60 * 60
-        count = self._storage.get_rate_counter(subject_type, subject_key, resource_type, window)
-        if count >= limit:
-            return False, limit - count
-        self._storage.increment_rate_counter(subject_type, subject_key, resource_type, window)
-        return True, limit - count - 1
+        new_count = self._storage.consume_rate_counter(subject_type, subject_key, resource_type, window, limit)
+        if new_count is None:
+            return False, 0
+        return True, max(0, limit - new_count)
 
     def check_access(self, record: Optional[TokenRecord], resource: ResourceType) -> AccessDecision:
-        if record and record.is_unlimited:
-            return AccessDecision(allowed=True, reason="unlimited token")
+        # NOTE: is_unlimited only exempts from rate limiting (see deps.py).
+        # Resource scopes are always enforced, for every token.
         if resource == ResourceType.GTFS_READ:
             allowed = record.allow_gtfs if record else True
             return AccessDecision(allowed=allowed, reason="gtfs not allowed" if not allowed else "public gtfs")

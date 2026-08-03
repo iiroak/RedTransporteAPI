@@ -316,6 +316,37 @@ class MySQLAuthStorage(AuthStorage):
                     return row[0] if row else 0
         return self._run(_get())
 
+    def consume_rate_counter(
+        self, subject_type: str, subject_key: str, resource_type: str, window_start: int, limit: int
+    ) -> Optional[int]:
+        async def _consume():
+            pool = await self._get_pool()
+            async with pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "INSERT IGNORE INTO rate_limit_counters "
+                        "(subject_type, subject_key, resource_type, window_start, request_count) "
+                        "VALUES (%s, %s, %s, %s, 0)",
+                        (subject_type, subject_key, resource_type, window_start),
+                    )
+                    affected = await cur.execute(
+                        "UPDATE rate_limit_counters SET request_count = request_count + 1 "
+                        "WHERE subject_type = %s AND subject_key = %s "
+                        "AND resource_type = %s AND window_start = %s AND request_count < %s",
+                        (subject_type, subject_key, resource_type, window_start, limit),
+                    )
+                    if affected == 0:
+                        return None
+                    await cur.execute(
+                        "SELECT request_count FROM rate_limit_counters "
+                        "WHERE subject_type = %s AND subject_key = %s "
+                        "AND resource_type = %s AND window_start = %s",
+                        (subject_type, subject_key, resource_type, window_start),
+                    )
+                    row = await cur.fetchone()
+                    return row[0] if row else None
+        return self._run(_consume())
+
     def _row_to_token_record(self, row) -> TokenRecord:
         return TokenRecord(
             id=row[0],
