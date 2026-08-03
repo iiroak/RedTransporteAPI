@@ -1,6 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
+# the deployment platform's HTTP healthcheck uses curl/wget inside the container.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 RUN pip install uv
 
