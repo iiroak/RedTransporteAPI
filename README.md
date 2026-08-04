@@ -19,7 +19,7 @@ API unificada para el transporte público de Santiago de Chile. Combina tres fue
 - **Tarifa integrada RED**: cálculo automático de pasaje (punta/valle/baja, estudiante, adulto mayor, transbordos)
 - **Cache inteligente** para iBus (TTL 30s) para evitar sobrecarga
 - **Instalador Linux** con script `install.sh`
-- **Sin base de datos** — GTFS cargado en memoria desde CSVs
+- **GTFS en memoria** — el dataset no requiere una base de datos; SQLite/MySQL se usa para auth, configuración y rate limits
 
 ## Disclaimer
 
@@ -28,6 +28,11 @@ No me hago responsable del uso de este repositorio. Las APIs utilizadas en este 
 ## Skill para agentes
 
 Este repositorio incluye una skill en la carpeta `skill/` para integrar y usar agentes tipo OpenClaw y herramientas similares dentro de flujos de automatizacion.
+
+La guía ampliada de integración HTTP, autenticación, scopes, rate limits y ejemplos
+está en [`docs/API_USAGE.md`](docs/API_USAGE.md).
+
+El adaptador MCP separado está en [RedTransporteMCP](https://github.com/iiroak/RedTransporteMCP).
 
 ## Instalación
 
@@ -148,6 +153,12 @@ result = tools.call_tool("get_stop_info", {"stop_code": "PA433"})
 
 ## API — Endpoints
 
+La referencia interactiva y la guía de integración mantienen el contrato completo:
+
+- Swagger: `http://localhost:8000/docs` o `https://api.example.com/docs`
+- OpenAPI: `http://localhost:8000/openapi.json` o `https://api.example.com/openapi.json`
+- Guía HTTP: [`docs/API_USAGE.md`](docs/API_USAGE.md)
+
 ### Sistema
 
 | Método | Ruta | Descripción |
@@ -210,7 +221,7 @@ result = tools.call_tool("get_stop_info", {"stop_code": "PA433"})
 | PATCH | `/admin/tokens/{id}` | Actualizar un token |
 | DELETE | `/admin/tokens/{id}` | Eliminar un token |
 
-> Todos los endpoints `/admin/*` requieren `Authorization: Bearer <master_token>`.
+> Todos los endpoints `/admin/*` y `POST /gtfs/update` requieren `Authorization: Bearer <master_token>`.
 > El token maestro se define via `RED_TRANSPORTE_MASTER_TOKEN` en `.env`.
 
 ## Planificador de rutas (RAPTOR)
@@ -380,7 +391,7 @@ red_transporte_api/
 | `RED_TRANSPORTE_DATA_DIR` | `~/.red_transporte` | Directorio de datos (GTFS + SQLite DB) |
 | `RED_TRANSPORTE_HOST` | `0.0.0.0` | Host del servidor API |
 | `RED_TRANSPORTE_PORT` | `8000` | Puerto del servidor API |
-| `RED_TRANSPORTE_MASTER_TOKEN` | _(vacío)_ | Token maestro para admin (requerido para `/admin/*`) |
+| `RED_TRANSPORTE_MASTER_TOKEN` | _(vacío)_ | Token maestro para admin (requerido para `/admin/*` y `POST /gtfs/update`) |
 | `RED_TRANSPORTE_DB_BACKEND` | `sqlite` | Backend de persistencia: `sqlite` o `mysql` |
 | `RED_TRANSPORTE_DB_URL` | _(ver default)_ | URL de conexión MySQL (cuando `DB_BACKEND=mysql`) |
 | `RED_TRANSPORTE_PUBLIC_API` | `true` | Habilitar acceso público sin token |

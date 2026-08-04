@@ -19,7 +19,7 @@
 - `red_transporte_api/auth/` contains the auth system: `models.py` (Pydantic schemas), `storage.py` (abstract base), `sqlite.py` and `mysql.py` (implementations), `service.py` (business logic), `rate_limit.py` (limiting), `deps.py` (FastAPI dependencies).
 
 ## Auth System
-- Master token is set via `RED_TRANSPORTE_MASTER_TOKEN` in `.env`; it only grants access to `/admin/*` routes.
+- Master token is set via `RED_TRANSPORTE_MASTER_TOKEN` in `.env`; it grants access to `/admin/*` and `POST /gtfs/update`.
 - API tokens are created via `POST /admin/tokens` (master token required); the raw token is returned only at creation time.
 - Tokens are stored as SHA-256 hashes (never plaintext). Use `AuthService.validate_token()` to verify.
 - Resource scopes: `gtfs_read`, `ibus`, `red_web`, `raptor`, `gtfs_admin`, `system`. Token capabilities gate access per source.

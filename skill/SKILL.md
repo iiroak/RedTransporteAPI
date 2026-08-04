@@ -390,3 +390,18 @@ El campo `fare.breakdown` muestra por cada tramo de transporte:
 - `predict` consulta fuentes en tiempo real y puede variar entre llamadas.
 - Para integraciones de scripts, usar siempre `--json`.
 - El planificador RAPTOR solo esta disponible via la API HTTP (`/routing/plan`), no via CLI.
+
+## Referencia HTTP
+
+Esta skill opera la CLI; no reemplaza la autenticación ni el contrato de la API.
+Para integrar un agente o servicio externo, consultar
+[`docs/API_USAGE.md`](../docs/API_USAGE.md), que documenta:
+
+- Base URLs local y de producción.
+- Master token frente a API tokens.
+- Scopes `gtfs_read`, `ibus`, `red_web`, `raptor` y `system`.
+- Política pública, rate limits y confianza en the reverse proxy proxy headers.
+- Endpoints, parámetros, respuestas y errores HTTP.
+
+El MCP separado de este proyecto consume la API mediante `RED_TRANSPORTE_API_TOKEN`;
+no debe reutilizarse el token MCP como token de la API REST.
